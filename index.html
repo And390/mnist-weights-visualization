@@ -11,6 +11,7 @@
 
 
 <div id="layers">
+    <div id="inputLayer"></div>
     <div id="hiddenLayer"></div>
     <div id="outLayer"></div>
 </div>
@@ -28,14 +29,30 @@
         height: 100%;
         display: flex;
         flex-direction: column;
+        overflow-y: hidden;
     }
     #layers > div {
         flex-grow: 1;
+    }
+    #layers > div#inputLayer {
+        flex-grow: 0;
+    }
+    #layers > div#inputLayer > canvas {
+        cursor: pointer;
+    }
+    #inputLayer {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+    #hiddenLayer {
+        margin-top: 24px;
         display: flex;
         flex-direction: column;
         justify-content: space-around;
     }
-    #layers > div > div {
+    #hiddenLayer > div {
         flex-grow: 1;
         display: flex;
         flex-direction: row;

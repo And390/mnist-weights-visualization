@@ -19,9 +19,6 @@ async function run()
        optimizer: 'sgd'
     });
 
-    initLayerContainer('hiddenLayer', HIDDEN_NODES);
-    initLayerContainer('outLayer', 10);
-
     const trainData = data.getTrainData();
     const testData = data.getTestData();
     let xs = trainData.xs;
@@ -31,11 +28,16 @@ async function run()
     testXS = testXS.reshape([testXS.shape[0], IMAGE_SIZE]);
     const testYS = trainData.labels;
 
+    renderInputLayer('inputLayer', xs);
+    initLayerContainer('hiddenLayer', HIDDEN_NODES);
+    initLayerContainer('outLayer', 10);
+    redrawNodes('hiddenLayer', model);
+
     console.log('train...');
 
     let epoch = 0;
     model.fit(xs, ys, {epochs: 1000, callbacks: {onEpochEnd: () => {
-        redrawLayerWeights(model.layers[0], 'hiddenLayer');
+        redrawNodes('hiddenLayer', model);
         console.log("epoch: " + (++epoch));
         if (epoch % 2 === 0)  {
             const n = testXS.shape[0];
@@ -50,6 +52,46 @@ async function run()
             console.log('result: ' + Math.round(success / n * 100) + '%');
         }
     }}});
+}
+
+function renderInputLayer(containerId, inputData)
+{
+    let selectedIndex = -1;
+
+    function resize()
+    {
+        const container = document.getElementById(containerId);
+        const width = container.offsetWidth;
+        const scale = 1;
+        const margin = 2;
+        const n = Math.floor((width / scale + margin) / (IMAGE_W + margin));
+        while (container.children.length < n) {
+            const index = container.children.length;
+            const canvas = document.createElement('canvas');
+            container.appendChild(canvas);
+            canvas.width = IMAGE_W;
+            canvas.height = IMAGE_H;
+            canvas.style.width = Math.round(scale * IMAGE_W) + 'px';
+            canvas.style.height = Math.round(scale * IMAGE_H) + 'px';
+            canvas.style.imageRendering = "pixelated";
+            canvas.onclick = () => {
+                console.log('sel index: '+selectedIndex);
+                selectedIndex = index;
+                resize();
+                //document.getElementById('hiddenLayer').selected = ... //todo
+                //redrawNodes('hiddenLayer');  //todo don't pass this id always
+            }
+        }
+        while (container.children.length > n)  container.removeChild(container.children[container.children.length-1]);
+
+        for (let i=0; i<n; i++)  {
+            const canvas = container.children[i];
+            drawInput(canvas, inputData.slice([i,0], [1,IMAGE_SIZE]), i === selectedIndex);
+        }
+    }
+
+    window.addEventListener('resize', () => resize());
+    resize();
 }
 
 function initLayerContainer(containerId, n)
@@ -72,15 +114,21 @@ function initLayerContainer(containerId, n)
             if (scale > s)  s = scale;  else break;
         }
         numRows--;
-        let items = container.canvases;
+        let items = container.items;
         if (container.childElementCount !== numRows)  {
             if (items == null) {
                 items = [];
                 for (let i=0; i<n; i++) {
-                    const el = document.createElement('canvas');
-                    el.width = IMAGE_W;
-                    el.height = IMAGE_H;
+                    const el = document.createElement('div');
                     items.push(el);
+                    el.biasLabel = document.createElement('div');
+                    el.appendChild(el.biasLabel);
+                    const canvas = el.canvas = document.createElement('canvas');
+                    canvas.width = IMAGE_W;
+                    canvas.height = IMAGE_H;
+                    el.appendChild(canvas);
+                    el.outLabels = document.createElement('div');
+                    el.appendChild(el.outLabels);
                 }
             }
             for (let r=0; r<container.children.length; r++)  {
@@ -94,12 +142,12 @@ function initLayerContainer(containerId, n)
                 container.children[r].appendChild(items[j]);
             }
             container.childElementCount = numRows;
-            container.canvases = items;
+            container.items = items;
         }
         for (let i=0; i<n; i++) {
-            const el = items[i];
-            el.style.width = Math.round(s * IMAGE_W) + 'px';
-            el.style.height = Math.round(s * IMAGE_H) + 'px';
+            const canvas = items[i].canvas;
+            canvas.style.width = Math.round(s * IMAGE_W) + 'px';
+            canvas.style.height = Math.round(s * IMAGE_H) + 'px';
         }
     }
 
@@ -107,58 +155,78 @@ function initLayerContainer(containerId, n)
     resize();
 }
 
-function redrawLayerWeights(layer, containerId) {
+function redrawNodes(containerId, model) {
     const container = document.getElementById(containerId);
-    const weights = layer.trainableWeights[0];
-    const biases = layer.trainableWeights[1];
+    if (!model)  model = container.model;  //todo something better
+    else  container.model = model;
+    const weights = model.layers[0].trainableWeights[0];
+    const biases = model.layers[0].trainableWeights[1];
     if (weights.shape[0] !== IMAGE_SIZE)  throw "Wrong layer size";
     const n = weights.shape[1];
     const weightsData = weights.val.dataSync();
     if (weightsData.length !== IMAGE_SIZE * n)  throw "Wrong layer weights data size";
     const biasesData = biases.val.dataSync();
     if (biasesData.length !== n)  throw "Wrong layer biases data size";
+    const resultWeights = model.layers[1].trainableWeights[0];
+    if (resultWeights.shape[0] !== n || resultWeights.shape[1] !== 10)  throw "Wrong output layer weights size";
+    const resultWeightsData = resultWeights.val.dataSync();
+
     for (let j=0; j<n; j++) {
-        const canvas = container.canvases[j];
-        const ctx = canvas.getContext('2d');
-        const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
-        const data = imgData.data;
-        for (let i=0; i<data.length; i+=4) {
-            const b = biasesData[j];
-            const w = weightsData[j + i/4 * n] * 4;
-            // let col = Math.round(clamp((Math.abs(w)) * 4, 0, 1) * 255);
-            // data[i  ] = w < 0 ? col : 0;
-            // data[i+1] = w > 0 ? col : 0;
-            // data[i+2] = 0;
-            // data[i+3] = 255;
-            let col = Math.round(clamp((w+1)/2, 0, 1) * 255);
-            data[i  ] = col;
-            data[i+1] = col;
-            data[i+2] = col;
-            data[i+3] = 255;
+        const div = container.items[j];
+        div.biasLabel.innerText = "bias: " + biasesData[j].toFixed(5);
+        let out = "";
+        let outValues = resultWeightsData.slice(j * 10, j * 10 + 10).sort();
+        for (let i=0; i<5; )  {
+            const value = outValues[10 - 1 - i];
+            let index = resultWeightsData.indexOf(value, j * 10);
+            while (resultWeightsData[index] === value)  {
+                if (i !== 0)  out += "<br>";
+                out += (index - j * 10) + ": " + value.toFixed(5);
+                index++;
+                i++;
+
+            }
         }
-        ctx.putImageData(imgData, 0, 0);
+        div.outLabels.innerHTML = out;
+        redrawLayerWeights(div.canvas, weightsData, j, n);
     }
 }
 
-function drawInput(x)
+function redrawLayerWeights(canvas, weightsData, j, n) {
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
+    const data = imgData.data;
+    for (let i=0; i<data.length; i+=4) {
+        const w = weightsData[j + i/4 * n] * 4;
+        // let col = Math.round(clamp((Math.abs(w)) * 4, 0, 1) * 255);
+        // data[i  ] = w < 0 ? col : 0;
+        // data[i+1] = w > 0 ? col : 0;
+        // data[i+2] = 0;
+        // data[i+3] = 255;
+        let col = Math.round(clamp((w+1)/2, 0, 1) * 255);
+        data[i  ] = col;
+        data[i+1] = col;
+        data[i+2] = col;
+        data[i+3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+}
+
+function drawInput(canvas, x, selected)
 {
     const source = x.dataSync();
     if (source.length !== IMAGE_SIZE) throw "Wrong input vector size";
 
-    const canvas = document.getElementById("test_image");
-    canvas.width = IMAGE_W;
-    canvas.height = IMAGE_H;
-    canvas.style.width = IMAGE_W*4 + "px";
-    canvas.style.height = IMAGE_H*4 + "px";
-    canvas.style.imageRendering = "pixelated";
     const ctx = canvas.getContext('2d');
     const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
     const data = imgData.data;
     for (let i=0; i<data.length; i+=4) {
         let col = Math.round(source[i/4] * 255);
-        data[i  ] = col;
-        data[i+1] = col;
-        data[i+2] = col;
+        let selCol = 255;
+        let selVal = 0.3;
+        data[i  ] = selected ? Math.round(col * (1-selVal) + 0 * selVal) : col;
+        data[i+1] = selected ? Math.round(col * (1-selVal) + 0 * selVal) : col;
+        data[i+2] = selected ? Math.round(col * (1-selVal) + selCol * selVal) : col;
         data[i+3] = 255;
     }
     ctx.putImageData(imgData, 0, 0);
