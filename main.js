@@ -4,9 +4,11 @@ window.addEventListener('load', () => run());
 async function run()
 {
     const loadingEl = document.getElementById("loading");
+    const mainContainer = document.getElementById("mainContainer");
     const data = new MnistData();
     await data.load();
     loadingEl.parentElement.removeChild(loadingEl);
+    mainContainer.style.visibility = 'visible';
 
     const HIDDEN_NODES = 8;
     const model = tf.sequential({
@@ -32,8 +34,6 @@ async function run()
 
     const panel = new NetworkPanel(model, xs);
 
-    console.log('train...');
-
     let epoch = 0;
     model.fit(xs, ys, {epochs: 1000, callbacks: {onEpochEnd: () => {
         panel.epochEnd();
@@ -51,6 +51,14 @@ async function run()
             console.log('result: ' + Math.round(success / n * 100) + '%');
         }
     }}});
+
+    const colorSwitch = document.getElementById('colorSwitch');
+    panel.setColorMode(colorSwitch.checked);
+    colorSwitch.addEventListener('change', (e) => panel.setColorMode(e.target.checked));
+
+    const sortOutputsSwitch = document.getElementById('sortOutputsSwitch');
+    panel.setSortOutputs(sortOutputsSwitch.checked);
+    sortOutputsSwitch.addEventListener('change', (e) => panel.setSortOutputs(e.target.checked));
 }
 
 class NetworkPanel
@@ -92,8 +100,13 @@ class NetworkPanel
                 canvas.style.height = Math.round(scale * IMAGE_H) + 'px';
                 canvas.style.imageRendering = "pixelated";
                 canvas.onclick = () => {
-                    that.selectedIndex = index;
-                    that.selectedData = canvas.inputData;
+                    if (that.selectedIndex !== index) {
+                        that.selectedIndex = index;
+                        that.selectedData = canvas.inputData;
+                    } else {
+                        that.selectedIndex = -1;
+                        that.selectedData = null;
+                    }
                     redrawInputLayer(container, n);
                     that.redrawInnerLayer();
                 }
@@ -122,11 +135,9 @@ class NetworkPanel
             const data = imgData.data;
             for (let i=0; i<data.length; i+=4) {
                 let col = Math.round(source[i/4] * 255);
-                let selCol = 255;
-                let selVal = 0.3;
-                data[i  ] = selected ? Math.round(col * (1-selVal) + 0 * selVal) : col;
-                data[i+1] = selected ? Math.round(col * (1-selVal) + 0 * selVal) : col;
-                data[i+2] = selected ? Math.round(col * (1-selVal) + selCol * selVal) : col;
+                data[i  ] = col;
+                data[i+1] = col;
+                data[i+2] = selected ? 255 : col;
                 data[i+3] = 255;
             }
             ctx.putImageData(imgData, 0, 0);
@@ -217,18 +228,20 @@ class NetworkPanel
         if (resultWeights.shape[0] !== n || resultWeights.shape[1] !== 10)  throw "Wrong output layer weights size";
         const resultWeightsData = resultWeights.val.dataSync();
 
+        function formatNumber(v)  {  return (v < 0 ? "&minus;" : "&nbsp;") + Math.abs(v).toFixed(4); }
+
         for (let j=0; j<n; j++) {
             const div = container.items[j];
             let out = "bias: " + biasesData[j].toFixed(5) + "<br>";
-            if (output)  out += "output: " + output[j].toFixed(5) + "<br>";
+            out += "output: " + (output ? output[j].toFixed(5) : '') + "<br>";
             const k = j * 10;
-            const outValues = Array.from(resultWeightsData.slice(k, k + 10))
-                .map((v,i) => ({index: i, value: v}))
-                .sort((a,b) => Math.abs(a.value) - Math.abs(b.value));
-            for (let i=0; i<5; i++)  {
-                const item = outValues[10 - 1 - i];
+            let outValues = Array.from(resultWeightsData.slice(k, k + 10))
+                .map((v,i) => ({index: i, value: v}));
+            if (this.sortOutputs)  outValues = outValues.sort((a,b) => Math.abs(b.value) - Math.abs(a.value));
+            for (let i=0; i<10; i++)  {
+                const item = outValues[i];
                 if (i !== 0)  out += "<br>";
-                out += (item.index) + ": " + item.value.toFixed(5);
+                out += (item.index) + ": " + formatNumber(item.value) + (output ? " ⇒ " + formatNumber(output[j] * item.value) : "");
             }
             div.outLabels.innerHTML = out;
             this.redrawLayerWeights(div.canvas, weightsData, j, n);
@@ -242,18 +255,30 @@ class NetworkPanel
         const data = imgData.data;
         for (let i=0; i<data.length; i+=4) {
             const w = weightsData[j + i/4 * n] * 4;
-            let col = Math.round(clamp((w+1)/2, 0, 1) * 255);
-            // data[i  ] = col;
-            // data[i+1] = col;
-            // data[i+2] = col;
-            let selCol = 255;
-            let selVal = 0.3 * (inputData ? 1 - inputData[i/4] : 0);
-            data[i  ] = Math.round(col * (1-selVal) + 0 * selVal);
-            data[i+1] = Math.round(col * (1-selVal) + 0 * selVal);
-            data[i+2] = Math.round(col * (1-selVal) + selCol * selVal);
+            let r,g,b;
+            if (this.colored) {
+                g = Math.round(Math.max(0,  w) * 255);
+                r = Math.round(Math.max(0, -w) * 255);
+                b = 0;
+            }
+            else  r = g = b = Math.round(clamp((w+1)/2, 0, 1) * 255);
+            let sel = 0.4 * (inputData ? 1 - inputData[i/4] : 0);
+            data[i  ] = Math.round(r * (1-sel) +   0 * sel);
+            data[i+1] = Math.round(g * (1-sel) +   0 * sel);
+            data[i+2] = Math.round(b * (1-sel) + 255 * sel);
             data[i+3] = 255;
         }
         ctx.putImageData(imgData, 0, 0);
+    }
+
+    setColorMode(colored) {
+        this.colored = colored;
+        this.redrawInnerLayer();  //todo only canvases
+    }
+
+    setSortOutputs(sortOutputs) {
+        this.sortOutputs = sortOutputs;
+        this.redrawInnerLayer();  //todo only labels
     }
 }
 

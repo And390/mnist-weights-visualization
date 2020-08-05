@@ -13,7 +13,17 @@
 <div id="loading">Loading...</div>
 
 
-<div id="layers">
+<div id="mainContainer">
+    <div id="headerPanel">
+        <span>
+            <input type="checkbox" id="colorSwitch"/>
+            <label for="colorSwitch">colored</label>
+        </span>
+        <span>
+            <input type="checkbox" id="sortOutputsSwitch"/>
+            <label for="sortOutputsSwitch">sort outputs</label>
+        </span>
+    </div>
     <div id="inputLayer"></div>
     <div id="hiddenLayer"></div>
     <div id="outLayer"></div>
@@ -25,8 +35,8 @@
         margin: 0;
     }
     body {
-        margin: 16px;
-        height: calc(100% - 32px);
+        margin: 24px;
+        height: calc(100% - 48px);
         overflow-y: hidden;
     }
     #loading {
@@ -36,21 +46,36 @@
         font-size: 72pt;
         transform: translate(-170px, -50%);
     }
-    #layers {
+    #mainContainer {
         height: 100%;
         display: flex;
         flex-direction: column;
+        visibility: hidden;
     }
-    #layers > div {
+    #mainContainer > div {
         flex-grow: 1;
     }
-    #layers > div#inputLayer {
+    #mainContainer > div#inputLayer {
         flex-grow: 0;
     }
-    #layers > div#inputLayer > canvas {
+    #mainContainer > div#inputLayer > canvas {
         cursor: pointer;
     }
+    #headerPanel {
+        display: flex;
+    }
+    #headerPanel > span {
+        display: flex;
+        margin-left: 20px;
+    }
+    #headerPanel > span:first-child {
+        margin-left: 0;
+    }
+    #headerPanel label {
+        font-weight: bold;
+    }
     #inputLayer {
+        margin-top: 24px;
         display: flex;
         flex-direction: row;
         justify-content: space-between;
@@ -69,6 +94,11 @@
         justify-content: space-between;
         align-items: center;
         margin-top: 16px;
+        font-family: monospace;
+        font-size: 0.8em;
+    }
+    #hiddenLayer > div:first-child {
+        margin-top: 0;
     }
     #layers canvas {
         image-rendering: pixelated;
