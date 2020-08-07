@@ -6,6 +6,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
     <script src="data.js"></script>
     <script src="main.js"></script>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -73,13 +74,15 @@
     }
     #headerPanel label {
         font-weight: bold;
+        cursor: pointer;
     }
     #inputLayer {
         margin-top: 24px;
         display: flex;
-        flex-direction: row;
         justify-content: space-between;
-        align-items: center;
+    }
+    #inputLayer canvas {
+        cursor: pointer;
     }
     #hiddenLayer {
         margin-top: 24px;

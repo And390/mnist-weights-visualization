@@ -32,7 +32,7 @@ async function run()
     testXS = testXS.reshape([testXS.shape[0], IMAGE_SIZE]);
     const testYS = trainData.labels;
 
-    const panel = new NetworkPanel(model, xs);
+    const panel = new NetworkPanel(model, xs, ys);
 
     let epoch = 0;
     model.fit(xs, ys, {epochs: 1000, callbacks: {onEpochEnd: () => {
@@ -41,7 +41,7 @@ async function run()
         if (epoch % 2 === 0)  {
             const n = testXS.shape[0];
             const result = model.predict(testXS).dataSync();
-            const expected = testData.labels.dataSync();
+            const expected = testYS.dataSync();
             let success = 0;
             for (let i=0; i<n; i++) {
                 const res = maxIndex(result, i*10, (i+1)*10);
@@ -63,11 +63,11 @@ async function run()
 
 class NetworkPanel
 {
-    constructor(model, trainData) {
+    constructor(model, trainData, labels) {
         this.model = model;
         this.inputData = trainData;
 
-        this.initInputLayer('inputLayer', trainData);
+        this.initInputLayer('inputLayer', trainData, labels);
         this.initLayerContainer('hiddenLayer', model.layers[0].outputShape[1]);
         this.initLayerContainer('outLayer', 10);
         this.redrawInnerLayer();
@@ -78,54 +78,89 @@ class NetworkPanel
         this.redrawInnerLayer();
     }
 
-    initInputLayer(containerId, inputData)
+    initInputLayer(containerId, inputData, inputDataLabels)
     {
+        const indices = Array.from(Array(inputDataLabels.size / 10).keys());
+        shuffle(indices);
+        const indicesByNumber = [];
+        for (let i=0; i<10; i++)  indicesByNumber.push([]);
+        const labels = inputDataLabels.dataSync();
+        for (let i=0; i<indices.length; i++) {
+            const index = indices[i];
+            const number = maxIndex(labels, index*10, (index+1)*10) - index*10;
+            indicesByNumber[number].push(index);
+        }
+
         const that = this;
         that.selectedIndex = -1;
+        that.countPerNumber = -1;
 
         function resize()
         {
-            const container = document.getElementById(containerId);
-            const width = container.offsetWidth;
+            const parentContainer = document.getElementById(containerId);
+            const parentWidth = parentContainer.offsetWidth;
+            const marginInParent = 8;
+            const width = Math.floor((parentWidth - marginInParent * 9) / 10);
             const scale = 1;
             const margin = 2;
-            const n = Math.floor((width / scale + margin) / (IMAGE_W + margin));
-            while (container.children.length < n) {
-                const index = container.children.length;
-                const canvas = document.createElement('canvas');
-                container.appendChild(canvas);
-                canvas.width = IMAGE_W;
-                canvas.height = IMAGE_H;
-                canvas.style.width = Math.round(scale * IMAGE_W) + 'px';
-                canvas.style.height = Math.round(scale * IMAGE_H) + 'px';
-                canvas.style.imageRendering = "pixelated";
-                canvas.onclick = () => {
-                    if (that.selectedIndex !== index) {
-                        that.selectedIndex = index;
-                        that.selectedData = canvas.inputData;
-                    } else {
-                        that.selectedIndex = -1;
-                        that.selectedData = null;
+            const countPerNumber = that.countPerNumber = Math.floor((width / scale + margin) / (IMAGE_W + margin));
+            for (let i=0; i<10; i++)
+            {
+                let container = parentContainer.children[i];
+                if (!container)  {
+                    container = document.createElement('div');
+                    parentContainer.appendChild(container);
+                    if (i !== 0)  container.style.marginLeft = marginInParent + "px";
+                }
+
+                while (container.children.length < countPerNumber) {
+                    const j = container.children.length;
+                    const index = indicesByNumber[i][j];
+                    const canvas = document.createElement('canvas');
+                    container.appendChild(canvas);
+                    canvas.width = IMAGE_W;
+                    canvas.height = IMAGE_H;
+                    canvas.style.width = Math.round(scale * IMAGE_W) + 'px';
+                    canvas.style.height = Math.round(scale * IMAGE_H) + 'px';
+                    canvas.style.imageRendering = "pixelated";
+                    if (j !== 0)  canvas.style.marginLeft = margin + "px";
+                    canvas.onclick = () => {
+                        if (that.selectedIndex !== index) {
+                            if (that.selectedIndex !== -1)  redrawInputLayerImage(that.selectedCanvas, that.selectedIndex, false);
+                            redrawInputLayerImage(canvas, index, true);
+                            that.selectedIndex = index;
+                            that.selectedData = canvas.inputData;
+                            that.selectedCanvas = canvas;
+                        } else {
+                            redrawInputLayerImage(canvas, index, false);
+                            that.selectedIndex = -1;
+                            that.selectedData = null;
+                            that.selectedCanvas = null;
+                        }
+                        that.redrawInnerLayer();
                     }
-                    redrawInputLayer(container, n);
-                    that.redrawInnerLayer();
+                }
+                while (container.children.length > countPerNumber)  container.removeChild(container.children[container.children.length-1]);
+            }
+
+            redrawInputLayer(parentContainer);
+        }
+
+        function redrawInputLayer(parentContainer)
+        {
+            for (let j=0; j<10; j++)  {
+                const container = parentContainer.children[j];
+                for (let i=0; i<that.countPerNumber; i++)  {
+                    const canvas = container.children[i];
+                    const index = indicesByNumber[j][i];
+                    redrawInputImage(canvas, index, index === that.selectedIndex)
                 }
             }
-            while (container.children.length > n)  container.removeChild(container.children[container.children.length-1]);
-
-            redrawInputLayer(container, n);
         }
 
-        function redrawInputLayer(container, n)
+        function redrawInputImage(canvas, index, selected)
         {
-            for (let i=0; i<n; i++)  {
-                const canvas = container.children[i];
-                drawInputSample(canvas, inputData.slice([i,0], [1,IMAGE_SIZE]), i === that.selectedIndex);
-            }
-        }
-
-        function drawInputSample(canvas, x, selected)
-        {
+            const x = inputData.slice([index,0], [1,IMAGE_SIZE]);
             canvas.inputData = x;
             const source = x.dataSync();
             if (source.length !== IMAGE_SIZE) throw "Wrong input vector size";
@@ -293,4 +328,12 @@ function maxIndex(array, begin, end)
         max = array[i];
     }
     return index;
+}
+
+function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
 }
