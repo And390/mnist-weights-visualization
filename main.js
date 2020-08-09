@@ -66,10 +66,12 @@ class NetworkPanel
     constructor(model, trainData, labels) {
         this.model = model;
         this.inputData = trainData;
+        this.innerLayerColumn1Sep = ": ";
+        this.innerLayerColumn2Sep = "  ";
+        this.innerLayerWeightPrecision = 5;
 
         this.initInputLayer('inputLayer', trainData, labels);
-        this.initLayerContainer('hiddenLayer', model.layers[0].outputShape[1]);
-        this.initLayerContainer('outLayer', 10);
+        this.initInnerLayer('innerLayer', model.layers[0].outputShape[1]);
         this.redrawInnerLayer();
     }
 
@@ -106,16 +108,16 @@ class NetworkPanel
         function resize()
         {
             const parentContainer = document.getElementById(containerId);
-            const parentWidth = parentContainer.offsetWidth;
+            const parentWidth = getInnerDimensions(parentContainer).width;
             const width = Math.floor((parentWidth - marginInParent * 11 - arrowWidth * 2) / 10);
-            countPerNumber = Math.floor((width / scale + margin) / (IMAGE_W + margin));
+            countPerNumber = Math.max(1, Math.floor((width / scale + margin) / (IMAGE_W + margin)));
             if (!parentContainer.children[0])  appendArrow(parentContainer, -1, false);
             for (let i=0; i<10; i++)
             {
                 let container = parentContainer.children[i+1];
                 if (!container)  {
                     container = document.createElement('div');
-                    container.style.marginLeft = marginInParent + "px";
+                    container.style.marginLeft = countPerNumber > 1 ? marginInParent + "px" : '0';
                     parentContainer.appendChild(container);
                 }
 
@@ -149,7 +151,7 @@ class NetworkPanel
                 }
                 while (container.children.length > countPerNumber)  container.removeChild(container.children[container.children.length-1]);
             }
-            if (!parentContainer.children[11])  appendArrow(parentContainer, 1, true);
+            if (!parentContainer.children[11])  appendArrow(parentContainer, 1, countPerNumber> 1);
 
             redrawInputLayer(parentContainer);
         }
@@ -213,28 +215,47 @@ class NetworkPanel
         resize();
     }
 
-    initLayerContainer(containerId, n)
+    initInnerLayer(containerId, n)
     {
+        const fontMetricsBySize = [10,11,12,13,14].map((it) => getFontMetrics("monospace", it));
+
+        const relativeMarginX = 3;
+        const relativeMarginY = 3;
+        const charactersPerNumber = 2 + this.innerLayerWeightPrecision;
+        const charactersPerRow = 1 + this.innerLayerColumn1Sep.length + charactersPerNumber * 2 + this.innerLayerColumn2Sep.length;
+
         function resize()
         {
             const container = document.getElementById(containerId);
-            const width = container.offsetWidth;
-            const height = container.offsetHeight;
-            const minSpace = 1;
-            let s = 0;
-            let numRows = 0;
-            while (true)  {
-                numRows++;
-                const rowSize = Math.ceil(n / numRows);
-                const scaleX = width / (IMAGE_W*rowSize + minSpace*(rowSize-1));
-                const scaleY = height / (IMAGE_H*numRows + minSpace*(numRows-1));
-                let scale = Math.min(scaleX, scaleY);
-                scale = scale > 1 ? Math.floor(scale) : Math.pow(2, Math.floor(Math.log2(scale)));
-                if (scale > s)  s = scale;  else break;
+            const {width,height} = getInnerDimensions(container);
+
+            let rowCount;
+            let fontMetrics;
+            let scale = 1;
+            for (;; scale++)  {
+                const imageWidth = IMAGE_W * scale;
+                const rowWidth = charactersPerRow * fontMetricsBySize[0].width;
+                if (rowWidth <= imageWidth)  break;
             }
-            numRows--;
+            for (let s=scale, f=0; ; s++)  {
+                const imageWidth = IMAGE_W * s;
+                const imageHeight = IMAGE_H * s;
+                const marginX = relativeMarginX * s;
+                const marginY = relativeMarginY * s;
+                while (f + 1 < fontMetricsBySize.length && imageWidth >= charactersPerRow * fontMetricsBySize[f + 1].width)  f++;
+                const fontMetrics_ = fontMetricsBySize[f];
+                let countInRow = Math.floor((width + marginX) / (imageWidth + marginX));
+                let rowCount_ = Math.ceil(n / countInRow);
+                let rowHeight = imageHeight + fontMetrics_.height * 12;
+                let contentHeight = rowHeight * rowCount_ + marginY * (rowCount_);
+                if (s !== scale && contentHeight > height)  break;
+                rowCount = rowCount_;
+                scale = s;
+                fontMetrics = fontMetrics_;
+            }
+
             let items = container.items;
-            if (container.childElementCount !== numRows)  {
+            if (container.childElementCount !== rowCount)  {
                 if (items == null) {
                     items = [];
                     for (let i=0; i<n; i++) {
@@ -244,26 +265,28 @@ class NetworkPanel
                         canvas.width = IMAGE_W;
                         canvas.height = IMAGE_H;
                         el.appendChild(canvas);
-                        el.outLabels = document.createElement('div');
-                        el.appendChild(el.outLabels);
+                        el.textDiv = document.createElement('div');
+                        el.appendChild(el.textDiv);
                     }
                 }
                 for (let r=0; r<container.children.length; r++)  {
                     const row = container.children[r];
                     for (let i=0; i<row.children.length; i++)  row.removeChild(row.children[i]);
                 }
-                while (container.children.length < numRows)  container.appendChild(document.createElement('div'));
-                while (container.children.length > numRows)  container.removeChild(container.children[container.children.length-1]);
-                const rowSize = Math.ceil(n / numRows);
-                for (let r=0, j=0; r<numRows; r++)  for (let i=0; i<rowSize && j<items.length; i++, j++)  {
+                while (container.children.length < rowCount)  container.appendChild(document.createElement('div'));
+                while (container.children.length > rowCount)  container.removeChild(container.children[container.children.length-1]);
+                const rowSize = Math.ceil(n / rowCount);
+                for (let r=0, j=0; r<rowCount; r++)  for (let i=0; i<rowSize && j<items.length; i++, j++)  {
                     container.children[r].appendChild(items[j]);
                 }
                 container.items = items;
             }
+            for (let i=0; i<container.children.length; i++)  container.children[i].style.marginTop = (relativeMarginY * scale) + "px";
             for (let i=0; i<n; i++) {
                 const canvas = items[i].canvas;
-                canvas.style.width = Math.round(s * IMAGE_W) + 'px';
-                canvas.style.height = Math.round(s * IMAGE_H) + 'px';
+                canvas.style.width = scale * IMAGE_W + 'px';
+                canvas.style.height = scale * IMAGE_H + 'px';
+                items[i].textDiv.style.fontSize = fontMetrics.size + 'px';
             }
         }
 
@@ -279,7 +302,7 @@ class NetworkPanel
             output = layerModel.predict(inputData).dataSync();
         }
 
-        const containerId = 'hiddenLayer';
+        const containerId = 'innerLayer';
         const model = this.model;
         const container = document.getElementById(containerId);
         const weights = model.layers[0].trainableWeights[0];
@@ -294,12 +317,18 @@ class NetworkPanel
         if (resultWeights.shape[0] !== n || resultWeights.shape[1] !== 10)  throw "Wrong output layer weights size";
         const resultWeightsData = resultWeights.val.dataSync();
 
-        function formatNumber(v)  {  return (v < 0 ? "&minus;" : "&nbsp;") + Math.abs(v).toFixed(4); }
+        const col1Sep = this.innerLayerColumn1Sep.replace(/ /g, "&nbsp;");
+        const col2Sep = this.innerLayerColumn2Sep.replace(/ /g, "&nbsp;");
+        const weightPrecision = this.innerLayerWeightPrecision;
+        function formatWeight(x)  {
+            const a = Math.abs(x);
+            return (x < 0 ? "&minus;" : "&nbsp;") + a.toFixed(weightPrecision - (a > 1 ? Math.ceil(Math.log10(a)) : 1));
+        }
 
         for (let j=0; j<n; j++) {
             const div = container.items[j];
-            let out = "bias: " + biasesData[j].toFixed(5) + "<br>";
-            out += "output: " + (output ? output[j].toFixed(5) : '') + "<br>";
+            let out = "bias: &nbsp;&nbsp;" + formatWeight(biasesData[j]) + "<br>";
+            out += "output: " + (output ? formatWeight(output[j]) : '') + "<br>";
             const k = j * 10;
             let outValues = Array.from(resultWeightsData.slice(k, k + 10))
                 .map((v,i) => ({index: i, value: v}));
@@ -307,9 +336,9 @@ class NetworkPanel
             for (let i=0; i<10; i++)  {
                 const item = outValues[i];
                 if (i !== 0)  out += "<br>";
-                out += (item.index) + ": " + formatNumber(item.value) + (output ? " ⇒ " + formatNumber(output[j] * item.value) : "");
+                out += (item.index) + col1Sep + formatWeight(item.value) + (output ? col2Sep + formatWeight(output[j] * item.value) : "");
             }
-            div.outLabels.innerHTML = out;
+            div.textDiv.innerHTML = out;
             this.redrawLayerWeights(div.canvas, weightsData, j, n);
         }
     }
@@ -371,4 +400,26 @@ function shuffle(a) {
 
 function mod(a,b) {
     return ((a % b) + b) % b;
+}
+
+
+function getFontMetrics(fontFamily, fontSize)
+{
+    const content = "1234567890";
+    let span = document.createElement('span');
+    span.style.fontFamily = fontFamily;
+    span.style.fontSize = fontSize + "px";
+    span.textContent = content;
+    document.body.appendChild(span);
+    let result = span.getBoundingClientRect();
+    document.body.removeChild(span);
+    result.width /= content.length;
+    result.size = fontSize;
+    return result;
+}
+
+function getInnerDimensions(element)
+{
+    const style = getComputedStyle(element);
+    return {width: parseInt(style.width), height: parseInt(style.height)};
 }
