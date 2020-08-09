@@ -90,32 +90,37 @@ class NetworkPanel
             const number = maxIndex(labels, index*10, (index+1)*10) - index*10;
             indicesByNumber[number].push(index);
         }
+        const maxNumberIndicesSize = Math.max(...indicesByNumber.map((it) => it.length));
+
+        const marginInParent = 8;
+        const arrowWidth = IMAGE_W;
+        const scale = 1;
+        const margin = 2;
+        const arrowPadding = 4;
 
         const that = this;
         that.selectedIndex = -1;
-        that.countPerNumber = -1;
+        let countPerNumber = -1;
+        let imageIndexOffset = 0;
 
         function resize()
         {
             const parentContainer = document.getElementById(containerId);
             const parentWidth = parentContainer.offsetWidth;
-            const marginInParent = 8;
-            const width = Math.floor((parentWidth - marginInParent * 9) / 10);
-            const scale = 1;
-            const margin = 2;
-            const countPerNumber = that.countPerNumber = Math.floor((width / scale + margin) / (IMAGE_W + margin));
+            const width = Math.floor((parentWidth - marginInParent * 11 - arrowWidth * 2) / 10);
+            countPerNumber = Math.floor((width / scale + margin) / (IMAGE_W + margin));
+            if (!parentContainer.children[0])  appendArrow(parentContainer, -1, false);
             for (let i=0; i<10; i++)
             {
-                let container = parentContainer.children[i];
+                let container = parentContainer.children[i+1];
                 if (!container)  {
                     container = document.createElement('div');
+                    container.style.marginLeft = marginInParent + "px";
                     parentContainer.appendChild(container);
-                    if (i !== 0)  container.style.marginLeft = marginInParent + "px";
                 }
 
                 while (container.children.length < countPerNumber) {
                     const j = container.children.length;
-                    const index = indicesByNumber[i][j];
                     const canvas = document.createElement('canvas');
                     container.appendChild(canvas);
                     canvas.width = IMAGE_W;
@@ -125,14 +130,16 @@ class NetworkPanel
                     canvas.style.imageRendering = "pixelated";
                     if (j !== 0)  canvas.style.marginLeft = margin + "px";
                     canvas.onclick = () => {
-                        if (that.selectedIndex !== index) {
-                            if (that.selectedIndex !== -1)  redrawInputLayerImage(that.selectedCanvas, that.selectedIndex, false);
-                            redrawInputLayerImage(canvas, index, true);
+                        const index = indicesByNumber[i][j + imageIndexOffset];
+                        const lastIndex = that.selectedIndex;
+                        if (lastIndex !== index) {
+                            if (lastIndex !== -1 && lastIndex === that.selectedCanvas.index)  redrawInputImage(that.selectedCanvas, lastIndex, false);
+                            redrawInputImage(canvas, index, true);
                             that.selectedIndex = index;
                             that.selectedData = canvas.inputData;
                             that.selectedCanvas = canvas;
                         } else {
-                            redrawInputLayerImage(canvas, index, false);
+                            redrawInputImage(canvas, index, false);
                             that.selectedIndex = -1;
                             that.selectedData = null;
                             that.selectedCanvas = null;
@@ -142,6 +149,7 @@ class NetworkPanel
                 }
                 while (container.children.length > countPerNumber)  container.removeChild(container.children[container.children.length-1]);
             }
+            if (!parentContainer.children[11])  appendArrow(parentContainer, 1, true);
 
             redrawInputLayer(parentContainer);
         }
@@ -149,10 +157,10 @@ class NetworkPanel
         function redrawInputLayer(parentContainer)
         {
             for (let j=0; j<10; j++)  {
-                const container = parentContainer.children[j];
-                for (let i=0; i<that.countPerNumber; i++)  {
+                const container = parentContainer.children[j+1];
+                for (let i=0; i<countPerNumber; i++)  {
                     const canvas = container.children[i];
-                    const index = indicesByNumber[j][i];
+                    const index = indicesByNumber[j][i + imageIndexOffset];
                     redrawInputImage(canvas, index, index === that.selectedIndex)
                 }
             }
@@ -160,8 +168,15 @@ class NetworkPanel
 
         function redrawInputImage(canvas, index, selected)
         {
+            if (index == null) {
+                canvas.style.visibility = "hidden";
+                return;
+            }
+            else  canvas.style.visibility = "visible";
+
             const x = inputData.slice([index,0], [1,IMAGE_SIZE]);
             canvas.inputData = x;
+            canvas.index = index;
             const source = x.dataSync();
             if (source.length !== IMAGE_SIZE) throw "Wrong input vector size";
 
@@ -176,6 +191,22 @@ class NetworkPanel
                 data[i+3] = 255;
             }
             ctx.putImageData(imgData, 0, 0);
+        }
+
+        function appendArrow(parent, direction, marginLeft)
+        {
+            const arrow = document.createElement('div');
+            arrow.innerHTML = direction > 0 ? "⮞" : "⮜";
+            arrow.className = "arrow";
+            arrow.style.width = arrowWidth + 'px';
+            arrow.style.height = Math.round(scale * IMAGE_H - arrowPadding) + 'px';
+            arrow.style.paddingTop = arrowPadding + 'px';
+            if (marginLeft)  arrow.style.marginLeft = marginInParent + "px";
+            arrow.onclick = () => {
+                imageIndexOffset = mod(imageIndexOffset + direction * countPerNumber, maxNumberIndicesSize);
+                redrawInputLayer(parent);
+            };
+            parent.appendChild(arrow);
         }
 
         window.addEventListener('resize', () => resize());
@@ -336,4 +367,8 @@ function shuffle(a) {
         [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
+}
+
+function mod(a,b) {
+    return ((a % b) + b) % b;
 }
