@@ -30,26 +30,24 @@ async function run()
     const ys = trainData.labels;
     let testXS = testData.xs;
     testXS = testXS.reshape([testXS.shape[0], IMAGE_SIZE]);
-    const testYS = trainData.labels;
+    const testYS = testData.labels;
 
     const panel = new NetworkPanel(model, xs, ys);
 
     let epoch = 0;
     model.fit(xs, ys, {epochs: 1000, callbacks: {onEpochEnd: () => {
         panel.epochEnd();
-        console.log("epoch: " + (++epoch));
-        if (epoch % 2 === 0)  {
-            const n = testXS.shape[0];
-            const result = model.predict(testXS).dataSync();
-            const expected = testYS.dataSync();
-            let success = 0;
-            for (let i=0; i<n; i++) {
-                const res = maxIndex(result, i*10, (i+1)*10);
-                const exp = maxIndex(expected, i*10, (i+1)*10);
-                if (res === exp)  success++;
-            }
-            console.log('result: ' + Math.round(success / n * 100) + '%');
+
+        const n = testXS.shape[0];
+        const result = model.predict(testXS).dataSync();
+        const expected = testYS.dataSync();
+        let success = 0;
+        for (let i=0; i<n; i++) {
+            const res = maxIndex(result, i*10, (i+1)*10);
+            const exp = maxIndex(expected, i*10, (i+1)*10);
+            if (res === exp)  success++;
         }
+        document.getElementById('resultLabel').innerText = 'epoch: ' + (++epoch) + ', result: ' + Math.round(success / n * 100) + '%';
     }}});
 
     const colorSwitch = document.getElementById('colorSwitch');
@@ -72,6 +70,7 @@ class NetworkPanel
 
         this.initInputLayer('inputLayer', trainData, labels);
         this.initInnerLayer('innerLayer', model.layers[0].outputShape[1]);
+        this.initOutputLayer();
         this.redrawInnerLayer();
     }
 
@@ -147,6 +146,7 @@ class NetworkPanel
                             that.selectedCanvas = null;
                         }
                         that.redrawInnerLayer();
+                        that.redrawOutputLayer();
                     }
                 }
                 while (container.children.length > countPerNumber)  container.removeChild(container.children[container.children.length-1]);
@@ -232,19 +232,23 @@ class NetworkPanel
             let rowCount;
             let fontMetrics;
             let scale = 1;
+            //  find the initial scale value that gives an image large than the text with minimal width
             for (;; scale++)  {
                 const imageWidth = IMAGE_W * scale;
                 const rowWidth = charactersPerRow * fontMetricsBySize[0].width;
                 if (rowWidth <= imageWidth)  break;
             }
-            for (let s=scale, f=0; ; s++)  {
+            //  increase font size and scale until the content fits the page
+            for (let f=0;;)  {
+                let s = scale;
+                if (f + 1 < fontMetricsBySize.length && IMAGE_W * s >= charactersPerRow * fontMetricsBySize[f + 1].width)  f++;
+                else  s++;
                 const imageWidth = IMAGE_W * s;
                 const imageHeight = IMAGE_H * s;
                 const marginX = relativeMarginX * s;
                 const marginY = relativeMarginY * s;
-                while (f + 1 < fontMetricsBySize.length && imageWidth >= charactersPerRow * fontMetricsBySize[f + 1].width)  f++;
                 const fontMetrics_ = fontMetricsBySize[f];
-                let countInRow = Math.floor((width + marginX) / (imageWidth + marginX));
+                let countInRow = Math.max(1, Math.floor((width + marginX) / (imageWidth + marginX)));
                 let rowCount_ = Math.ceil(n / countInRow);
                 let rowHeight = imageHeight + fontMetrics_.height * 12;
                 let contentHeight = rowHeight * rowCount_ + marginY * (rowCount_);
@@ -364,6 +368,41 @@ class NetworkPanel
             data[i+3] = 255;
         }
         ctx.putImageData(imgData, 0, 0);
+    }
+
+    initOutputLayer()
+    {
+        let container = document.getElementById('outputWeights');
+        container.style.visibility = false;
+        container.labels = [];
+        container.bars = [];
+        for (let i=0; i<10; i++)  {
+            let label = document.createElement('span');
+            label.innerText = i.toString();
+            container.appendChild(label);
+            container.labels.push(label);
+            let bar = document.createElement('span');
+            bar.className = 'bar';
+            container.appendChild(bar);
+            container.bars.push(bar);
+        }
+    }
+
+    redrawOutputLayer()
+    {
+        let container = document.getElementById('outputWeights');
+        container.style.visibility = this.selectedIndex !== -1;
+        if (this.selectedIndex === -1)  return;
+
+        let resultWeights = this.model.predict(this.selectedData).dataSync();
+        let resultIndex = maxIndex(resultWeights, 0, resultWeights.length);
+        let resultWeightsSum = resultWeights.reduce((a,b) => a+b, 0);
+
+        for (let i=0; i<10; i++)  {
+            container.labels[i].className = i === resultIndex ? 'winner' : '';
+            container.bars[i].style.backgroundColor = resultWeights[i] >= 0 ? '#0a0' : '#a00';
+            container.bars[i].style.height = Math.round(container.offsetHeight * Math.abs(resultWeights[i] / resultWeightsSum)) + 'px';
+        }
     }
 
     setColorMode(colored) {

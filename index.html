@@ -16,14 +16,21 @@
 
 <div id="mainContainer">
     <div id="headerPanel">
-        <span>
-            <input type="checkbox" id="colorSwitch"/>
-            <label for="colorSwitch">colored</label>
-        </span>
-        <span>
-            <input type="checkbox" id="sortOutputsSwitch"/>
-            <label for="sortOutputsSwitch">sort outputs</label>
-        </span>
+        <div class="controls">
+            <span>
+                <input type="checkbox" id="colorSwitch"/>
+                <label for="colorSwitch">colored</label>
+            </span>
+            <span>
+                <input type="checkbox" id="sortOutputsSwitch"/>
+                <label for="sortOutputsSwitch">sort outputs</label>
+            </span>
+        </div>
+        <div id="outputWeights">
+        </div>
+        <div id="resultLabel">
+            epoch: 0, result: 0%
+        </div>
     </div>
     <div id="inputLayer"></div>
     <div id="innerLayer"></div>
@@ -54,18 +61,44 @@
     }
     #headerPanel {
         display: flex;
+        justify-content: space-between;
         padding: 24px;
     }
-    #headerPanel > span {
+    #headerPanel > .controls {
+        display: flex;
+    }
+    #headerPanel > .controls > span {
         display: flex;
         margin-left: 20px;
     }
-    #headerPanel > span:first-child {
+    #headerPanel > .controls > span:first-child {
         margin-left: 0;
     }
     #headerPanel label {
         font-weight: bold;
         cursor: pointer;
+    }
+    #headerPanel > .resultLabel {
+
+    }
+    #headerPanel > #outputWeights {
+        display: flex;
+        align-items: flex-end;
+        height: 50px;
+        font-size: 24px;
+        color: #aaa;
+    }
+    #headerPanel > #outputWeights .winner {
+        font-weight: bold;
+        color: #000;
+    }
+    #headerPanel > #outputWeights > .bar {
+        width: 10px;
+        margin-left: 4px;
+        margin-right: 20px;
+    }
+    #headerPanel > #outputWeights > .bar:last-child {
+        margin-right: 0;
     }
     #inputLayer {
         flex-grow: 0;
