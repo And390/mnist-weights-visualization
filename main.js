@@ -68,14 +68,16 @@ class NetworkPanel
         this.innerLayerColumn2Sep = "  ";
         this.innerLayerWeightPrecision = 5;
 
+        this.calculateModelData();
+        this.initOutputLayer();
         this.initInputLayer('inputLayer', trainData, labels);
         this.initInnerLayer('innerLayer', model.layers[0].outputShape[1]);
-        this.initOutputLayer();
         this.redrawInnerLayer();
     }
 
     epochEnd()
     {
+        this.calculateModelData();
         this.redrawInnerLayer();
         this.redrawOutputLayer();
     }
@@ -146,6 +148,7 @@ class NetworkPanel
                             that.selectedData = null;
                             that.selectedCanvas = null;
                         }
+                        that.calculateModelData();
                         that.redrawInnerLayer();
                         that.redrawOutputLayer();
                     }
@@ -218,8 +221,9 @@ class NetworkPanel
 
     initInnerLayer(containerId, n)
     {
-        const fontMetricsBySize = [10,11,12,13,14].map((it) => getFontMetrics("monospace", it));
+        const fontMetricsBySize = [8,9,10,11,12,13,14].map((it) => getFontMetrics("monospace", it));
 
+        const that = this;
         const relativeMarginX = 3;
         const relativeMarginY = 3;
         const charactersPerNumber = 2 + this.innerLayerWeightPrecision;
@@ -267,14 +271,6 @@ class NetworkPanel
                 if (items == null) {
                     items = [];
 
-                    function createSpan(parent, text)  {
-                        const span = document.createElement('span');
-                        span.innerHTML = text;
-                        parent.appendChild(span);
-                        return span;
-                    }
-                    function createBr(parent)  {  parent.appendChild(document.createElement('br'));  }
-
                     for (let i=0; i<n; i++) {
                         const el = document.createElement('div');
                         items.push(el);
@@ -291,11 +287,11 @@ class NetworkPanel
                             const row = document.createElement('div');
                             el.appendChild(row);
                             el.numberRows.push(row);
-                            row.numberLabel = createSpan(row, '');
-                            createSpan(row, col1Sep);
-                            row.weightLabel = createSpan(row, '');
-                            createSpan(row, col2Sep);
-                            row.outputLabel = createSpan(row, '');
+                            row.numberLabel = that.createSpan(row, '');
+                            that.createSpan(row, col1Sep);
+                            row.weightLabel = that.createSpan(row, '');
+                            that.createSpan(row, col2Sep);
+                            row.outputLabel = that.createSpan(row, '');
                         }
                     }
                 }
@@ -325,72 +321,41 @@ class NetworkPanel
     }
 
     redrawInnerLayer() {
-        let output = null;
-        const inputData = this.selectedData;
-        if (inputData) {
-            const layerModel = tf.model({inputs: this.model.layers[0].input, outputs: this.model.layers[0].output});
-            output = layerModel.predict(inputData).dataSync();
-        }
-
-        const containerId = 'innerLayer';
-        const model = this.model;
-        const container = document.getElementById(containerId);
-        const weights = model.layers[0].trainableWeights[0];
-        const biases = model.layers[0].trainableWeights[1];
-        if (weights.shape[0] !== IMAGE_SIZE)  throw "Wrong layer size";
-        const n = weights.shape[1];
-        const weightsData = weights.val.dataSync();
-        if (weightsData.length !== IMAGE_SIZE * n)  throw "Wrong layer weights data size";
-        const biasesData = biases.val.dataSync();
-        if (biasesData.length !== n)  throw "Wrong layer biases data size";
-        const resultWeights = model.layers[1].trainableWeights[0];
-        if (resultWeights.shape[0] !== n || resultWeights.shape[1] !== 10)  throw "Wrong output layer weights size";
-        const resultWeightsData = resultWeights.val.dataSync();
-
-        let maxOutput = -Infinity;
-        if (output) {
-            for (let j=0; j<n; j++) {
-                for (let i=0; i<10; i++)  {
-                    maxOutput = Math.max(maxOutput, output[j] * resultWeightsData[j * 10 + i]);
-                }
-            }
-        }
-
-        const weightPrecision = this.innerLayerWeightPrecision;
-        function formatWeight(x)  {
-            const a = Math.abs(x);
-            return (x < 0 ? "−" : " ") + a.toFixed(weightPrecision - (a > 1 ? Math.ceil(Math.log10(a)) : 1));
-        }
+        const container = document.getElementById('innerLayer');
+        const n = this.innerNodeCount;
+        const data = this.modelData;
+        const weights = data.layer1Weights;
+        const biases = data.layer1Biases;
+        const layer2Weights = data.layer2Weights;
+        const output = data.innerResults;
+        const maxOutput = data.maxWeight;
 
         for (let j=0; j<n; j++) {
             const div = container.items[j];
-            div.biasLabel.innerHTML = "bias: &nbsp;&nbsp;" + formatWeight(biasesData[j]);
-            div.outputLabel.innerHTML = "output:&nbsp;" + (output ? formatWeight(output[j]) : '');
+            div.biasLabel.innerHTML = "bias: &nbsp;&nbsp;" + this.formatWeight(biases[j]);
+            div.outputLabel.innerHTML = "output:&nbsp;" + this.formatWeight(output[j]);
             const k = j * 10;
-            let outValues = Array.from(resultWeightsData.slice(k, k + 10))
-                .map((v,i) => ({index: i, value: v}));
+            let outValues = Array.from(layer2Weights.slice(k, k + 10)).map((v,i) => ({index: i, value: v}));
             if (this.sortOutputs)  outValues = outValues.sort((a,b) => Math.abs(b.value) - Math.abs(a.value));
             for (let i=0; i<10; i++)  {
                 const item = outValues[i];
-                const o = output ? output[j] * item.value : 0;
+                const weightedOutput = output[j] * item.value;
                 div.numberRows[i].numberLabel.innerText = item.index.toString();
-                div.numberRows[i].weightLabel.innerText = formatWeight(item.value);
-                div.numberRows[i].outputLabel.innerText = output ? formatWeight(o) : '';
-                const p = Math.abs(Math.round(o / maxOutput * 100));
-                const col = o > 0 ? '#8f8' : '#f88';
-                div.numberRows[i].outputLabel.style = output ? "background: linear-gradient(90deg, "+col+" "+p+"%, #fff "+p+"%)" : '';
+                div.numberRows[i].weightLabel.innerText = this.formatWeight(item.value);
+                div.numberRows[i].outputLabel.innerText = isNaN(weightedOutput) ? '' : this.formatWeight(weightedOutput);
+                div.numberRows[i].outputLabel.style = this.barStyle(weightedOutput / maxOutput);
             }
-            this.redrawLayerWeights(div.canvas, weightsData, j, n);
+            this.redrawWeights(div.canvas, weights, j, n);
         }
     }
 
-    redrawLayerWeights(canvas, weightsData, j, n) {
+    redrawWeights(canvas, weights, j, n) {
         const inputData = this.selectedData && this.selectedData.dataSync();
         const ctx = canvas.getContext('2d');
         const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
         const data = imgData.data;
         for (let i=0; i<data.length; i+=4) {
-            const w = weightsData[j + i/4 * n] * 4;
+            const w = weights[j + i/4 * n] * 4;
             let r,g,b;
             if (this.colored) {
                 g = Math.round(Math.max(0,  w) * 255);
@@ -409,37 +374,142 @@ class NetworkPanel
 
     initOutputLayer()
     {
-        let container = document.getElementById('outputWeights');
-        container.style.visibility = false;
-        container.labels = [];
-        container.bars = [];
-        for (let i=0; i<10; i++)  {
-            let label = document.createElement('span');
-            label.innerText = i.toString();
-            container.appendChild(label);
-            container.labels.push(label);
-            let bar = document.createElement('span');
-            bar.className = 'bar';
-            container.appendChild(bar);
-            container.bars.push(bar);
+        let container = document.getElementById('outputLayer');
+
+        if (container.childElementCount === 0)
+        {
+            const n = this.model.layers[0].trainableWeights[0].shape[1];
+
+            for (let i=0; i<10; i++) {
+                let div = document.createElement('div');
+                const that = this;
+                function addRow(label) {
+                    const row = document.createElement('div');
+                    that.createSpan(row, label);
+                    row.valueSpan = that.createSpan(row, '');
+                    div.appendChild(row);
+                    return row;
+                }
+
+                div.numberLabel = document.createElement('div');
+                div.numberLabel.className = 'number';
+                div.numberLabel.innerText = i.toString();
+                div.appendChild(div.numberLabel);
+                div.resultRow = addRow('result:&nbsp;');
+                div.resultRow.style = 'font-weight: bold';
+                div.biasRow = addRow('bias:&nbsp;&nbsp;&nbsp;');
+                div.weightRows = [];
+                for (let j=0; j<n; j++) {
+                    const ind = j+1;  //this.formatSubscript(j+1);
+                    div.weightRows[j] = addRow('w' + ind + '*x' + ind + ':' + (ind < 10 ? '&nbsp;&nbsp;' : ''));
+                }
+                div.myResultRow = addRow('my res:&nbsp;');  //todo remove
+                container.appendChild(div);
+            }
         }
+
+        this.redrawOutputLayer();
     }
 
     redrawOutputLayer()
     {
-        let container = document.getElementById('outputWeights');
-        container.style.visibility = this.selectedIndex !== -1;
-        if (this.selectedIndex === -1)  return;
+        const container = document.getElementById('outputLayer');
+        
+        const n = this.innerNodeCount;
+        const data = this.modelData;
+        const results = data.results;
+        const resultIndex = data.resultIndex;
+        const resultSum = data.resultSum;
+        const layer2Biases = data.layer2Biases;
+        const layer2Weights = data.layer2Weights;
+        const maxWeight = data.maxWeight;
+        const innerResults = data.innerResults;
 
-        let resultWeights = this.model.predict(this.selectedData).dataSync();
-        let resultIndex = maxIndex(resultWeights, 0, resultWeights.length);
-        let resultWeightsSum = resultWeights.reduce((a,b) => a+b, 0);
-
-        for (let i=0; i<10; i++)  {
-            container.labels[i].className = i === resultIndex ? 'winner' : '';
-            container.bars[i].style.backgroundColor = resultWeights[i] >= 0 ? '#0a0' : '#a00';
-            container.bars[i].style.height = Math.round(container.offsetHeight * Math.abs(resultWeights[i] / resultWeightsSum)) + 'px';
+        for (let i=0; i<10; i++) {
+            const div = container.children[i];
+            div.numberLabel.className = i === resultIndex ? 'number winner' : 'number';
+            div.resultRow.valueSpan.innerHTML = this.formatWeight(results[i]);
+            div.resultRow.valueSpan.style = this.barStyle(results[i] / resultSum);
+            div.biasRow.valueSpan.innerHTML = this.formatWeight(layer2Biases[i]);
+            div.biasRow.valueSpan.style = this.barStyle(layer2Biases[i] / maxWeight);
+            let myResult = layer2Biases[i];
+            for (let j=0; j<n; j++) {
+                const x = innerResults[j] * layer2Weights[j * 10 + i];
+                div.weightRows[j].valueSpan.innerHTML = this.formatWeight(x);
+                div.weightRows[j].valueSpan.style = this.barStyle(x / maxWeight);
+                myResult += x
+            }
+            div.myResultRow.valueSpan.innerHTML = this.formatWeight(myResult);
         }
+    }
+
+    calculateModelData() {
+        const model = this.model;
+        const n = this.innerNodeCount = model.layers[0].trainableWeights[0].shape[1];
+        const inputData = this.selectedData;
+        const data = this.modelData = {
+            results: [],
+            innerResults: []
+        };
+
+        const layer1WeightsTensor = model.layers[0].trainableWeights[0];
+        const layer1BiasesTensor = model.layers[0].trainableWeights[1];
+        if (layer1WeightsTensor.shape[0] !== IMAGE_SIZE)  throw "Wrong layer1 size";
+        data.layer1Weights = layer1WeightsTensor.val.dataSync();
+        if (data.layer1Weights.length !== IMAGE_SIZE * n)  throw "Wrong layer1 weights data size";
+        data.layer1Biases = layer1BiasesTensor.val.dataSync();
+        if (data.layer1Biases.length !== n)  throw "Wrong layer1 biases data size";
+
+        const layer2WeightsTensor = model.layers[1].trainableWeights[0];
+        const layer2BiasesTensor = model.layers[1].trainableWeights[1];
+        if (layer2WeightsTensor.shape[0] !== n || layer2WeightsTensor.shape[1] !== 10)  throw "Wrong output layer weights size";
+        if (layer2BiasesTensor.shape[0] !== 10)  throw "Wrong output layer biases size";
+        data.layer2Weights = layer2WeightsTensor.val.dataSync();
+        data.layer2Biases = layer2BiasesTensor.val.dataSync();
+
+        if (inputData) {
+            const innerModel = tf.model({inputs: this.model.layers[0].input, outputs: this.model.layers[0].output});
+            const innerResults = data.innerResults = innerModel.predict(inputData).dataSync();
+
+            data.results = model.predict(inputData).dataSync();
+            data.resultIndex = maxIndex(data.results, 0, data.results.length);
+            data.resultSum = data.results.reduce((a,b) => a+b, 0);
+            let maxWeight = data.resultSum;
+            for (let i=0; i<10; i++)  Math.max(data.resultSum, Math.abs(data.layer2Biases[i]));
+            for (let i=0; i<10; i++)  for (let j=0; j<n; j++)  maxWeight = Math.max(maxWeight, Math.abs(innerResults[j] * data.layer2Weights[j * 10 + i]));
+            data.maxWeight = maxWeight;
+        }
+    }
+
+    barStyle(x) {
+        if (isNaN(x))  return '';
+        const p = Math.abs(Math.round(x * 100));
+        const col = x > 0 ? '#8f8' : '#f88';
+        return "background: linear-gradient(90deg, "+col+" "+p+"%, #fff "+p+"%)";
+    }
+
+    createSpan(parent, text)  {
+        const span = document.createElement('span');
+        span.innerHTML = text;
+        parent.appendChild(span);
+        return span;
+    }
+
+    formatWeight(x) {
+        if (x == null || isNaN(x))  return '&nbsp;'.repeat(this.innerLayerWeightPrecision + 2);
+        const a = Math.abs(x);
+        return (x < 0 ? "−" : " ") + a.toFixed(this.innerLayerWeightPrecision - (a > 1 ? Math.ceil(Math.log10(a)) : 1));
+    }
+
+    formatSubscript(x) {
+        if (isNaN(x))  return '';
+        const s = x.toString();
+        const d = '₁'.charCodeAt(0) - '1'.charCodeAt(0);
+        let res = '';
+        for (let i=0; i<s.length; i++) {
+            res += String.fromCharCode(s.charCodeAt(i) + d);
+        }
+        return res;
     }
 
     setColorMode(colored) {

@@ -34,6 +34,7 @@
     </div>
     <div id="inputLayer"></div>
     <div id="innerLayer"></div>
+    <div id="outputLayer"></div>
 </div>
 
 <style type="text/css">
@@ -42,7 +43,7 @@
         margin: 0;
     }
     body {
-        height: calc(100% - 48px);
+        height: 100%;
         margin: 0;
         overflow-y: hidden;
     }
@@ -78,28 +79,6 @@
         font-weight: bold;
         cursor: pointer;
     }
-    #headerPanel > .resultLabel {
-
-    }
-    #headerPanel > #outputWeights {
-        display: flex;
-        align-items: flex-end;
-        height: 50px;
-        font-size: 24px;
-        color: #aaa;
-    }
-    #headerPanel > #outputWeights .winner {
-        font-weight: bold;
-        color: #000;
-    }
-    #headerPanel > #outputWeights > .bar {
-        width: 10px;
-        margin-left: 4px;
-        margin-right: 20px;
-    }
-    #headerPanel > #outputWeights > .bar:last-child {
-        margin-right: 0;
-    }
     #inputLayer {
         flex-grow: 0;
         padding: 0 24px;
@@ -132,10 +111,29 @@
         flex-direction: row;
         justify-content: space-between;
         font-family: monospace;
-        font-size: 0.8em;
     }
     #layers canvas {
         image-rendering: pixelated;
+    }
+    #outputLayer {
+        flex-grow: 0;
+        padding: 0 24px 24px;
+        display: flex;
+        justify-content: space-between;
+
+        font-family: monospace;
+        font-size: 10px;
+    }
+    #outputLayer .number {
+        margin: 5px;
+        font-family: sans-serif;
+        font-size: 36px;
+        text-align: center;
+        cursor: default;
+        color: #888;
+    }
+    #outputLayer .number.winner {
+        color: #000;
     }
 </style>
 
