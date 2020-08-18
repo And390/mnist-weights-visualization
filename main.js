@@ -282,17 +282,23 @@ class NetworkPanel
                         el.appendChild(el.biasLabel);
                         el.outputLabel = document.createElement('div');
                         el.appendChild(el.outputLabel);
-                        el.numberRows = [];
+                        el.weightRows = [];
                         for (let j=0; j<10; j++) {
                             const row = document.createElement('div');
                             el.appendChild(row);
-                            el.numberRows.push(row);
+                            el.weightRows.push(row);
                             row.numberLabel = that.createSpan(row, '');
                             that.createSpan(row, col1Sep);
                             row.weightLabel = that.createSpan(row, '');
                             that.createSpan(row, col2Sep);
                             row.outputLabel = that.createSpan(row, '');
+                            row.onmouseover = (e) => {
+                                e.stopPropagation();
+                                that.highlightOutputNumberWeight(j, i);
+                            }
                         }
+                        el.onmouseover = (e) => that.highlightOutputInnerNode(el, i);
+                        el.onmouseleave = (e) => that.removeHighlight();
                     }
                 }
                 for (let r=0; r<container.children.length; r++)  {
@@ -340,10 +346,10 @@ class NetworkPanel
             for (let i=0; i<10; i++)  {
                 const item = outValues[i];
                 const weightedOutput = output[j] * item.value;
-                div.numberRows[i].numberLabel.innerText = item.index.toString();
-                div.numberRows[i].weightLabel.innerText = this.formatWeight(item.value);
-                div.numberRows[i].outputLabel.innerText = isNaN(weightedOutput) ? '' : this.formatWeight(weightedOutput);
-                div.numberRows[i].outputLabel.style = this.barStyle(weightedOutput / maxOutput);
+                div.weightRows[i].numberLabel.innerText = item.index.toString();
+                div.weightRows[i].weightLabel.innerText = this.formatWeight(item.value);
+                div.weightRows[i].outputLabel.innerText = isNaN(weightedOutput) ? '' : this.formatWeight(weightedOutput);
+                div.weightRows[i].outputLabel.style = this.barStyle(weightedOutput / maxOutput);
             }
             this.redrawWeights(div.canvas, weights, j, n);
         }
@@ -374,7 +380,9 @@ class NetworkPanel
 
     initOutputLayer()
     {
-        let container = document.getElementById('outputLayer');
+        const that = this;
+        const innerLayerContainer = document.getElementById('innerLayer');
+        const container = document.getElementById('outputLayer');
 
         if (container.childElementCount === 0)
         {
@@ -402,13 +410,68 @@ class NetworkPanel
                 for (let j=0; j<n; j++) {
                     const ind = j+1;  //this.formatSubscript(j+1);
                     div.weightRows[j] = addRow('w' + ind + '*x' + ind + ':' + (ind < 10 ? '&nbsp;&nbsp;' : ''));
+                    div.weightRows[j].onmouseover = (e) => {
+                        e.stopPropagation();
+                        that.highlightOutputNumberWeight(i, j);
+                    }
                 }
-                div.myResultRow = addRow('my res:&nbsp;');  //todo remove
+                div.onmouseover = () => that.highlightOutputNumber(div, i);
+                div.onmouseleave = () => that.removeHighlight();
                 container.appendChild(div);
             }
         }
 
         this.redrawOutputLayer();
+    }
+
+    highlightOutputNumber(div, number)
+    {
+        const innerContainer = document.getElementById('innerLayer');
+        const outerContainer = document.getElementById('outputLayer');
+        const innerNodes = innerContainer.items;
+        innerContainer.className = 'highlight';
+        outerContainer.className = 'highlight';
+
+        const lastEls = document.getElementsByClassName('highlighted');
+        for (let i=lastEls.length-1; i>=0; i--)  lastEls[i].className = '';
+
+        div.className = 'highlighted';
+        for (let i=0; i<innerNodes.length; i++)  innerNodes[i].weightRows[number].className = 'highlighted';
+    }
+
+    highlightOutputInnerNode(div, index)
+    {
+        const innerContainer = document.getElementById('innerLayer');
+        const outerContainer = document.getElementById('outputLayer');
+        innerContainer.className = 'highlight';
+        outerContainer.className = 'highlight';
+
+        const lastEls = document.getElementsByClassName('highlighted');
+        for (let i=lastEls.length-1; i>=0; i--)  lastEls[i].className = '';
+
+        div.className = 'highlighted';
+        for (let i=0; i<10; i++)  outerContainer.children[i].weightRows[index].className = 'highlighted';
+    }
+
+    highlightOutputNumberWeight(number, weight)
+    {
+        const innerContainer = document.getElementById('innerLayer');
+        const outerContainer = document.getElementById('outputLayer');
+        const innerNodes = innerContainer.items;
+        innerContainer.className = 'highlight';
+        outerContainer.className = 'highlight';
+
+        const lastEls = document.getElementsByClassName('highlighted');
+        for (let i=lastEls.length-1; i>=0; i--)  lastEls[i].className = '';
+
+        outerContainer.children[number].weightRows[weight].className = 'highlighted';
+        innerNodes[weight].weightRows[number].className = 'highlighted';
+    }
+
+    removeHighlight()
+    {
+        document.getElementById('innerLayer').className = '';
+        document.getElementById('outputLayer').className = '';
     }
 
     redrawOutputLayer()
@@ -432,14 +495,13 @@ class NetworkPanel
             div.resultRow.valueSpan.style = this.barStyle(results[i] / resultSum);
             div.biasRow.valueSpan.innerHTML = this.formatWeight(layer2Biases[i]);
             div.biasRow.valueSpan.style = this.barStyle(layer2Biases[i] / maxWeight);
-            let myResult = layer2Biases[i];
+            //let weightedInput = layer2Biases[i];
             for (let j=0; j<n; j++) {
                 const x = innerResults[j] * layer2Weights[j * 10 + i];
                 div.weightRows[j].valueSpan.innerHTML = this.formatWeight(x);
                 div.weightRows[j].valueSpan.style = this.barStyle(x / maxWeight);
-                myResult += x
+                //weightedInput += x
             }
-            div.myResultRow.valueSpan.innerHTML = this.formatWeight(myResult);
         }
     }
 
