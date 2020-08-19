@@ -25,29 +25,25 @@ async function run()
 
     const trainData = data.getTrainData();
     const testData = data.getTestData();
-    let xs = trainData.xs;
-    xs = xs.reshape([xs.shape[0], IMAGE_SIZE]);
-    const ys = trainData.labels;
-    let testXS = testData.xs;
-    testXS = testXS.reshape([testXS.shape[0], IMAGE_SIZE]);
-    const testYS = testData.labels;
+    const testXS = testData.xs;
+    const testYS = testData.ys.dataSync();
+    const trainLabels = [];
+    for (let i=0; i<testYS.length; i+=10)  trainLabels[i/10] = maxIndex(testYS, i, i+10) - i;
 
-    const panel = new NetworkPanel(model, xs, ys);
+    const panel = new NetworkPanel(model, testXS, trainLabels);
 
     let epoch = 0;
-    model.fit(xs, ys, {epochs: 1000, callbacks: {onEpochEnd: () => {
-        panel.epochEnd();
-
+    model.fit(trainData.xs, trainData.ys, {epochs: 1000, callbacks: {onEpochEnd: () => {
         const n = testXS.shape[0];
         const result = model.predict(testXS).dataSync();
-        const expected = testYS.dataSync();
         let success = 0;
         for (let i=0; i<n; i++) {
-            const res = maxIndex(result, i*10, (i+1)*10);
-            const exp = maxIndex(expected, i*10, (i+1)*10);
+            const res = maxIndex(result, i*10, (i+1)*10) - i*10;
+            const exp = trainLabels[i];
             if (res === exp)  success++;
         }
-        document.getElementById('resultLabel').innerText = 'epoch: ' + (++epoch) + ', result: ' + Math.round(success / n * 100) + '%';
+
+        panel.epochEnd(++epoch, success / n);
     }}});
 
     const colorSwitch = document.getElementById('colorSwitch');
@@ -61,37 +57,37 @@ async function run()
 
 class NetworkPanel
 {
-    constructor(model, trainData, labels) {
+    constructor(model, inputData, inputLabels) {
         this.model = model;
-        this.inputData = trainData;
         this.innerLayerColumn1Sep = ": ";
         this.innerLayerColumn2Sep = "  ";
         this.innerLayerWeightPrecision = 5;
 
         this.calculateModelData();
         this.initOutputLayer();
-        this.initInputLayer('inputLayer', trainData, labels);
+        this.initInputLayer('inputLayer', inputData, inputLabels);
         this.initInnerLayer('innerLayer', model.layers[0].outputShape[1]);
-        this.redrawInnerLayer();
+        this.renderInnerLayer();
     }
 
-    epochEnd()
+    epochEnd(epoch, success)
     {
         this.calculateModelData();
-        this.redrawInnerLayer();
-        this.redrawOutputLayer();
+        this.renderInnerLayer();
+        this.renderOutputLayer();
+
+        document.getElementById('resultLabel').innerText = 'epoch: ' + epoch + ', result: ' + Math.round(success * 100) + '%';
     }
 
-    initInputLayer(containerId, inputData, inputDataLabels)
+    initInputLayer(containerId, inputData, inputLabels)
     {
-        const indices = Array.from(Array(inputDataLabels.size / 10).keys());
+        const indices = Array.from(Array(inputLabels.length).keys());
         shuffle(indices);
         const indicesByNumber = [];
         for (let i=0; i<10; i++)  indicesByNumber.push([]);
-        const labels = inputDataLabels.dataSync();
         for (let i=0; i<indices.length; i++) {
             const index = indices[i];
-            const number = maxIndex(labels, index*10, (index+1)*10) - index*10;
+            const number = inputLabels[index];
             indicesByNumber[number].push(index);
         }
         const maxNumberIndicesSize = Math.max(...indicesByNumber.map((it) => it.length));
@@ -137,42 +133,42 @@ class NetworkPanel
                         const index = indicesByNumber[i][j + imageIndexOffset];
                         const lastIndex = that.selectedIndex;
                         if (lastIndex !== index) {
-                            if (lastIndex !== -1 && lastIndex === that.selectedCanvas.index)  redrawInputImage(that.selectedCanvas, lastIndex, false);
-                            redrawInputImage(canvas, index, true);
+                            if (lastIndex !== -1 && lastIndex === that.selectedCanvas.index)  renderInputImage(that.selectedCanvas, lastIndex, false);
+                            renderInputImage(canvas, index, true);
                             that.selectedIndex = index;
                             that.selectedData = canvas.inputData;
                             that.selectedCanvas = canvas;
                         } else {
-                            redrawInputImage(canvas, index, false);
+                            renderInputImage(canvas, index, false);
                             that.selectedIndex = -1;
                             that.selectedData = null;
                             that.selectedCanvas = null;
                         }
                         that.calculateModelData();
-                        that.redrawInnerLayer();
-                        that.redrawOutputLayer();
+                        that.renderInnerLayer();
+                        that.renderOutputLayer();
                     }
                 }
                 while (container.children.length > countPerNumber)  container.removeChild(container.children[container.children.length-1]);
             }
             if (!parentContainer.children[11])  appendArrow(parentContainer, 1, countPerNumber> 1);
 
-            redrawInputLayer(parentContainer);
+            renderInputLayer(parentContainer);
         }
 
-        function redrawInputLayer(parentContainer)
+        function renderInputLayer(parentContainer)
         {
             for (let j=0; j<10; j++)  {
                 const container = parentContainer.children[j+1];
                 for (let i=0; i<countPerNumber; i++)  {
                     const canvas = container.children[i];
                     const index = indicesByNumber[j][i + imageIndexOffset];
-                    redrawInputImage(canvas, index, index === that.selectedIndex)
+                    renderInputImage(canvas, index, index === that.selectedIndex)
                 }
             }
         }
 
-        function redrawInputImage(canvas, index, selected)
+        function renderInputImage(canvas, index, selected)
         {
             if (index == null) {
                 canvas.style.visibility = "hidden";
@@ -210,7 +206,7 @@ class NetworkPanel
             if (marginLeft)  arrow.style.marginLeft = marginInParent + "px";
             arrow.onclick = () => {
                 imageIndexOffset = mod(imageIndexOffset + direction * countPerNumber, maxNumberIndicesSize);
-                redrawInputLayer(parent);
+                renderInputLayer(parent);
             };
             parent.appendChild(arrow);
         }
@@ -326,7 +322,7 @@ class NetworkPanel
         resize();
     }
 
-    redrawInnerLayer() {
+    renderInnerLayer() {
         const container = document.getElementById('innerLayer');
         const n = this.innerNodeCount;
         const data = this.modelData;
@@ -351,11 +347,11 @@ class NetworkPanel
                 div.weightRows[i].outputLabel.innerText = isNaN(weightedOutput) ? '' : this.formatWeight(weightedOutput);
                 div.weightRows[i].outputLabel.style = this.barStyle(weightedOutput / maxOutput);
             }
-            this.redrawWeights(div.canvas, weights, j, n);
+            this.renderWeights(div.canvas, weights, j, n);
         }
     }
 
-    redrawWeights(canvas, weights, j, n) {
+    renderWeights(canvas, weights, j, n) {
         const inputData = this.selectedData && this.selectedData.dataSync();
         const ctx = canvas.getContext('2d');
         const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
@@ -421,7 +417,7 @@ class NetworkPanel
             }
         }
 
-        this.redrawOutputLayer();
+        this.renderOutputLayer();
     }
 
     highlightOutputNumber(div, number)
@@ -474,7 +470,7 @@ class NetworkPanel
         document.getElementById('outputLayer').className = '';
     }
 
-    redrawOutputLayer()
+    renderOutputLayer()
     {
         const container = document.getElementById('outputLayer');
         
@@ -508,7 +504,7 @@ class NetworkPanel
     calculateModelData() {
         const model = this.model;
         const n = this.innerNodeCount = model.layers[0].trainableWeights[0].shape[1];
-        const inputData = this.selectedData;
+        const selectedData = this.selectedData;
         const data = this.modelData = {
             results: [],
             innerResults: []
@@ -529,11 +525,11 @@ class NetworkPanel
         data.layer2Weights = layer2WeightsTensor.val.dataSync();
         data.layer2Biases = layer2BiasesTensor.val.dataSync();
 
-        if (inputData) {
+        if (selectedData) {
             const innerModel = tf.model({inputs: this.model.layers[0].input, outputs: this.model.layers[0].output});
-            const innerResults = data.innerResults = innerModel.predict(inputData).dataSync();
+            const innerResults = data.innerResults = innerModel.predict(selectedData).dataSync();
 
-            data.results = model.predict(inputData).dataSync();
+            data.results = model.predict(selectedData).dataSync();
             data.resultIndex = maxIndex(data.results, 0, data.results.length);
             data.resultSum = data.results.reduce((a,b) => a+b, 0);
             let maxWeight = data.resultSum;
@@ -576,12 +572,12 @@ class NetworkPanel
 
     setColorMode(colored) {
         this.colored = colored;
-        this.redrawInnerLayer();  //todo only canvases
+        this.renderInnerLayer();  //todo only canvases
     }
 
     setSortOutputs(sortOutputs) {
         this.sortOutputs = sortOutputs;
-        this.redrawInnerLayer();  //todo only labels
+        this.renderInnerLayer();  //todo only labels
     }
 }
 

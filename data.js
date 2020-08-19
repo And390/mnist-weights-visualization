@@ -97,17 +97,13 @@ class MnistData {
    * Get all training data as a data tensor and a labels tensor.
    *
    * @returns
-   *   xs: The data tensor, of shape `[numTrainExamples, 28, 28, 1]`.
-   *   labels: The one-hot encoded labels tensor, of shape
-   *     `[numTrainExamples, 10]`.
+   *   xs: The data tensor, of shape `[numTrainExamples, 28*28]`.
+   *   ys: The one-hot encoded labels tensor, of shape `[numTrainExamples, 10]`.
    */
   getTrainData() {
-    const xs = tf.tensor4d(
-        this.trainImages,
-        [this.trainImages.length / IMAGE_SIZE, IMAGE_H, IMAGE_W, 1]);
-    const labels = tf.tensor2d(
-        this.trainLabels, [this.trainLabels.length / NUM_CLASSES, NUM_CLASSES]);
-    return {xs, labels};
+    const xs = tf.tensor2d(this.trainImages, [this.trainImages.length / IMAGE_SIZE, IMAGE_SIZE]);
+    const ys = tf.tensor2d(this.trainLabels, [this.trainLabels.length / NUM_CLASSES, NUM_CLASSES]);
+    return {xs, ys};
   }
 
   /**
@@ -117,21 +113,17 @@ class MnistData {
    *     provided,
    *   all test examples will be returned.
    * @returns
-   *   xs: The data tensor, of shape `[numTestExamples, 28, 28, 1]`.
-   *   labels: The one-hot encoded labels tensor, of shape
-   *     `[numTestExamples, 10]`.
+   *   xs: The data tensor, of shape `[numTestExamples, 28 *28]`.
+   *   ys: The one-hot encoded labels tensor, of shape `[numTestExamples, 10]`.
    */
   getTestData(numExamples) {
-    let xs = tf.tensor4d(
-        this.testImages,
-        [this.testImages.length / IMAGE_SIZE, IMAGE_H, IMAGE_W, 1]);
-    let labels = tf.tensor2d(
-        this.testLabels, [this.testLabels.length / NUM_CLASSES, NUM_CLASSES]);
+    let xs = tf.tensor2d(this.testImages, [this.testImages.length / IMAGE_SIZE, IMAGE_SIZE]);
+    let ys = tf.tensor2d(this.testLabels, [this.testLabels.length / NUM_CLASSES, NUM_CLASSES]);
 
     if (numExamples != null) {
-      xs = xs.slice([0, 0, 0, 0], [numExamples, IMAGE_H, IMAGE_W, 1]);
-      labels = labels.slice([0, 0], [numExamples, NUM_CLASSES]);
+      xs = xs.slice([0, 0, 0, 0], [numExamples, IMAGE_SIZE]);
+      ys = ys.slice([0, 0], [numExamples, NUM_CLASSES]);
     }
-    return {xs, labels};
+    return {xs, ys};
   }
 }
