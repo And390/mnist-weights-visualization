@@ -36,14 +36,16 @@ async function run()
     model.fit(trainData.xs, trainData.ys, {epochs: 1000, callbacks: {onEpochEnd: () => {
         const n = testXS.shape[0];
         const result = model.predict(testXS).dataSync();
+        const resultLabels = [];
         let success = 0;
         for (let i=0; i<n; i++) {
             const res = maxIndex(result, i*10, (i+1)*10) - i*10;
             const exp = trainLabels[i];
             if (res === exp)  success++;
+            resultLabels[i] = res;
         }
 
-        panel.epochEnd(++epoch, success / n);
+        panel.epochEnd(++epoch, success / n, resultLabels);
     }}});
 
     const colorSwitch = document.getElementById('colorSwitch');
@@ -59,31 +61,35 @@ class NetworkPanel
 {
     constructor(model, inputData, inputLabels) {
         this.model = model;
+        this.inputData = inputData;
+        this.inputLabels = inputLabels;
         this.innerLayerColumn1Sep = ": ";
         this.innerLayerColumn2Sep = "  ";
         this.innerLayerWeightPrecision = 5;
 
         this.calculateModelData();
         this.initOutputLayer();
-        this.initInputLayer('inputLayer', inputData, inputLabels);
+        this.initInputLayer('inputLayer', inputLabels);
         this.initInnerLayer('innerLayer', model.layers[0].outputShape[1]);
         this.renderInnerLayer();
     }
 
-    epochEnd(epoch, success)
+    epochEnd(epoch, success, predictedLabels)
     {
+        this.predictedLabels = predictedLabels;
         this.calculateModelData();
+        this.renderInputLayer();
         this.renderInnerLayer();
         this.renderOutputLayer();
 
         document.getElementById('resultLabel').innerText = 'epoch: ' + epoch + ', result: ' + Math.round(success * 100) + '%';
     }
 
-    initInputLayer(containerId, inputData, inputLabels)
+    initInputLayer(containerId, inputLabels)
     {
         const indices = Array.from(Array(inputLabels.length).keys());
         shuffle(indices);
-        const indicesByNumber = [];
+        const indicesByNumber = this.inputDataIndicesByNumber = [];
         for (let i=0; i<10; i++)  indicesByNumber.push([]);
         for (let i=0; i<indices.length; i++) {
             const index = indices[i];
@@ -100,15 +106,14 @@ class NetworkPanel
 
         const that = this;
         that.selectedIndex = -1;
-        let countPerNumber = -1;
-        let imageIndexOffset = 0;
+        that.imageIndexOffset = 0;
 
         function resize()
         {
             const parentContainer = document.getElementById(containerId);
             const parentWidth = getInnerDimensions(parentContainer).width;
             const width = Math.floor((parentWidth - marginInParent * 11 - arrowWidth * 2) / 10);
-            countPerNumber = Math.max(1, Math.floor((width / scale + margin) / (IMAGE_W + margin)));
+            const countPerNumber = that.inputLayerImagesPerNumber = Math.max(1, Math.floor((width / scale + margin) / (IMAGE_W + margin)));
             if (!parentContainer.children[0])  appendArrow(parentContainer, -1, false);
             for (let i=0; i<10; i++)
             {
@@ -130,16 +135,16 @@ class NetworkPanel
                     canvas.style.imageRendering = "pixelated";
                     if (j !== 0)  canvas.style.marginLeft = margin + "px";
                     canvas.onclick = () => {
-                        const index = indicesByNumber[i][j + imageIndexOffset];
+                        const index = indicesByNumber[i][j + that.imageIndexOffset];
                         const lastIndex = that.selectedIndex;
                         if (lastIndex !== index) {
-                            if (lastIndex !== -1 && lastIndex === that.selectedCanvas.index)  renderInputImage(that.selectedCanvas, lastIndex, false);
-                            renderInputImage(canvas, index, true);
+                            if (lastIndex !== -1 && lastIndex === that.selectedCanvas.index)  that.renderInputImage(that.selectedCanvas, lastIndex, false);
+                            that.renderInputImage(canvas, index, true);
                             that.selectedIndex = index;
                             that.selectedData = canvas.inputData;
                             that.selectedCanvas = canvas;
                         } else {
-                            renderInputImage(canvas, index, false);
+                            that.renderInputImage(canvas, index, false);
                             that.selectedIndex = -1;
                             that.selectedData = null;
                             that.selectedCanvas = null;
@@ -153,46 +158,7 @@ class NetworkPanel
             }
             if (!parentContainer.children[11])  appendArrow(parentContainer, 1, countPerNumber> 1);
 
-            renderInputLayer(parentContainer);
-        }
-
-        function renderInputLayer(parentContainer)
-        {
-            for (let j=0; j<10; j++)  {
-                const container = parentContainer.children[j+1];
-                for (let i=0; i<countPerNumber; i++)  {
-                    const canvas = container.children[i];
-                    const index = indicesByNumber[j][i + imageIndexOffset];
-                    renderInputImage(canvas, index, index === that.selectedIndex)
-                }
-            }
-        }
-
-        function renderInputImage(canvas, index, selected)
-        {
-            if (index == null) {
-                canvas.style.visibility = "hidden";
-                return;
-            }
-            else  canvas.style.visibility = "visible";
-
-            const x = inputData.slice([index,0], [1,IMAGE_SIZE]);
-            canvas.inputData = x;
-            canvas.index = index;
-            const source = x.dataSync();
-            if (source.length !== IMAGE_SIZE) throw "Wrong input vector size";
-
-            const ctx = canvas.getContext('2d');
-            const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
-            const data = imgData.data;
-            for (let i=0; i<data.length; i+=4) {
-                let col = Math.round(source[i/4] * 255);
-                data[i  ] = col;
-                data[i+1] = col;
-                data[i+2] = selected ? 255 : col;
-                data[i+3] = 255;
-            }
-            ctx.putImageData(imgData, 0, 0);
+            that.renderInputLayer();
         }
 
         function appendArrow(parent, direction, marginLeft)
@@ -205,14 +171,57 @@ class NetworkPanel
             arrow.style.paddingTop = arrowPadding + 'px';
             if (marginLeft)  arrow.style.marginLeft = marginInParent + "px";
             arrow.onclick = () => {
-                imageIndexOffset = mod(imageIndexOffset + direction * countPerNumber, maxNumberIndicesSize);
-                renderInputLayer(parent);
+                that.imageIndexOffset = mod(that.imageIndexOffset + direction * that.inputLayerImagesPerNumber, maxNumberIndicesSize);
+                that.renderInputLayer();
             };
             parent.appendChild(arrow);
         }
 
         window.addEventListener('resize', () => resize());
         resize();
+    }
+
+    renderInputLayer()
+    {
+        const parentContainer = document.getElementById('inputLayer');
+        for (let j=0; j<10; j++)  {
+            const container = parentContainer.children[j+1];
+            for (let i=0; i<this.inputLayerImagesPerNumber; i++)  {
+                const canvas = container.children[i];
+                const index = this.inputDataIndicesByNumber[j][i + this.imageIndexOffset];
+                this.renderInputImage(canvas, index, index === this.selectedIndex)
+            }
+        }
+    }
+
+    renderInputImage(canvas, index, selected)
+    {
+        if (index == null) {
+            canvas.style.visibility = "hidden";
+            return;
+        }
+        else  canvas.style.visibility = "visible";
+
+        const success = this.predictedLabels && this.predictedLabels[index] === this.inputLabels[index];
+
+        const x = this.inputData.slice([index,0], [1,IMAGE_SIZE]);
+        canvas.inputData = x;
+        canvas.index = index;
+        const source = x.dataSync();
+        if (source.length !== IMAGE_SIZE) throw "Wrong input vector size";
+
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
+        const data = imgData.data;
+        for (let i=0; i<data.length; i+=4) {
+            let c1 = Math.round(source[i/4] * 255);
+            let c2 = Math.round(source[i/4] * 255 * 0.6);
+            data[i  ] = success ? c2 : c1;
+            data[i+1] = success ? c1 : c2;
+            data[i+2] = selected ? 255 : c2;
+            data[i+3] = 255;
+        }
+        ctx.putImageData(imgData, 0, 0);
     }
 
     initInnerLayer(containerId, n)
@@ -352,7 +361,7 @@ class NetworkPanel
     }
 
     renderWeights(canvas, weights, j, n) {
-        const inputData = this.selectedData && this.selectedData.dataSync();
+        const selectedData = this.selectedData && this.selectedData.dataSync();
         const ctx = canvas.getContext('2d');
         const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
         const data = imgData.data;
@@ -365,7 +374,7 @@ class NetworkPanel
                 b = 0;
             }
             else  r = g = b = Math.round(clamp((w+1)/2, 0, 1) * 255);
-            let sel = 0.4 * (inputData ? 1 - inputData[i/4] : 0);
+            let sel = 0.4 * (selectedData ? 1 - selectedData[i/4] : 0);
             data[i  ] = Math.round(r * (1-sel) +   0 * sel);
             data[i+1] = Math.round(g * (1-sel) +   0 * sel);
             data[i+2] = Math.round(b * (1-sel) + 255 * sel);
@@ -572,12 +581,12 @@ class NetworkPanel
 
     setColorMode(colored) {
         this.colored = colored;
-        this.renderInnerLayer();  //todo only canvases
+        this.renderInnerLayer();
     }
 
     setSortOutputs(sortOutputs) {
         this.sortOutputs = sortOutputs;
-        this.renderInnerLayer();  //todo only labels
+        this.renderInnerLayer();
     }
 }
 
