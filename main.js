@@ -1,5 +1,7 @@
 
-window.addEventListener('load', () => run());
+const errorHandler = setupErrorHandler();
+
+window.addEventListener('load', () => run().catch((error) => errorHandler.onerror(error)));
 
 async function run()
 {
@@ -177,8 +179,7 @@ class NetworkPanel
             parent.appendChild(arrow);
         }
 
-        window.addEventListener('resize', () => resize());
-        resize();
+        this.addOnResize(resize);
     }
 
     renderInputLayer()
@@ -327,8 +328,7 @@ class NetworkPanel
             }
         }
 
-        window.addEventListener('resize', () => resize());
-        resize();
+        this.addOnResize(resize)
     }
 
     renderInnerLayer() {
@@ -548,6 +548,12 @@ class NetworkPanel
         }
     }
 
+    addOnResize(func)
+    {
+        window.addEventListener('resize', _.debounce(func, 300));
+        func();
+    }
+
     barStyle(x) {
         if (isNaN(x))  return '';
         const p = Math.abs(Math.round(x * 100));
@@ -635,4 +641,32 @@ function getInnerDimensions(element)
 {
     const style = getComputedStyle(element);
     return {width: parseInt(style.width), height: parseInt(style.height)};
+}
+
+function setupErrorHandler()
+{
+    const debug = true;
+    window.onerror = function (error) {
+        console.log('error');
+        onerror(error);
+    };
+
+    let errorCount = 0;
+    let decErrorCountId = null;
+    function onerror(error, clientMessage)
+    {
+        let maxErrors = debug ? 10 : 3;
+        if (errorCount + 1 <= maxErrors)  {
+            errorCount++;
+            const message = error ? (error.message || error.toString()) : 'Error';
+            var toastrMessage = debug ? message : (clientMessage || "JavaScript error :( You can try to refresh the page or come back later");
+            toastr.error(toastrMessage);
+        }
+        if (decErrorCountId == null)  decErrorCount();
+    }
+    function decErrorCount() {
+        decErrorCountId = setTimeout(() => {  if (--errorCount > 0)  decErrorCount();  else  decErrorCountId = null;  }, 1000)
+    }
+
+    return {onerror: onerror}
 }
