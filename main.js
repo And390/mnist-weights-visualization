@@ -9,13 +9,35 @@ function init()
     const mainContainer = document.getElementById("mainContainer");
     const data = new MnistData();
     data.load().then(() => {
+        const panel = createPanel(data);
+
         const loadingRow = document.getElementById("loading");
-        const startButtonRow = document.getElementById("startButtonRow");
+        const startRow = document.getElementById("startRow");
+        const restartRow = document.getElementById("restartRow");
         loadingRow.style.display = 'none';
-        startButtonRow.style.display = 'block';
-        let isRun = false;
-        startButtonRow.onclick = () => {
-            if (isRun)  return;
+        startRow.style.display = 'block';
+
+        document.getElementById('startButton').onclick = () => {
+            start();
+            startRow.style.display = 'none';
+            restartRow.style.display = 'block';
+        };
+        document.getElementById('backButton').onclick = () => {
+            setupContainer.style.visibility = 'visible';
+            mainContainer.style.visibility = 'hidden';
+        };
+        document.getElementById('returnButton').onclick = () => {
+            setupContainer.style.visibility = 'hidden';
+            mainContainer.style.visibility = 'visible';
+        };
+        document.getElementById('restartButton').onclick = () => {
+            stop();
+            start();
+        };
+
+        let running = false;
+        function start() {
+            if (running)  return;
             const innerNeuronsInput = document.getElementById('innerNeurons');
             const innerNeurons = parseInt(innerNeuronsInput.value);
             const innerNeuronsMin = parseInt(innerNeuronsInput.min);
@@ -24,16 +46,32 @@ function init()
             if (innerNeurons < innerNeuronsMin || innerNeurons > innerNeuronsMax)  {  toastr.warning("Inner layer neurons count should be in range ["+innerNeuronsMin+" .. "+innerNeuronsMax+"]");  return;  }
             const innerActivation = document.getElementById('innerActivation').value;
             const outputActivation = document.getElementById('outputActivation').value;
-            isRun = true;
             setupContainer.style.visibility = 'hidden';
             mainContainer.style.visibility = 'visible';
-            setTimeout(() => run(data, innerNeurons, innerActivation, outputActivation), 1);
+            setTimeout(() => createAndRunModel(panel, data, innerNeurons, innerActivation, outputActivation), 1);
+            running = true;
+        }
+        function stop() {
+            stopModel(panel);
+            running = false;
         }
     }).catch((error) => errorHandler.onerror(error));
 }
 
-function run(data, innerNeurons, innerActivation, outputActivation)
+function createPanel(data) {
+    const testData = data.getTestData();
+    const testX = testData.xs;
+    const testY = testData.ys.dataSync();
+    const testLabels = [];
+    for (let i=0; i<testY.length; i+=10)  testLabels[i/10] = maxIndex(testY, i, i+10) - i;
+
+    return new NetworkPanel(testX, testLabels);
+}
+
+function createAndRunModel(panel, data, innerNeurons, innerActivation, outputActivation)
 {
+    const trainData = data.getTrainData();
+
     const model = tf.sequential({
         layers: [
             tf.layers.dense({inputShape: [IMAGE_SIZE], units: innerNeurons, activation: innerActivation, name: 'layer1'}),
@@ -46,55 +84,66 @@ function run(data, innerNeurons, innerActivation, outputActivation)
        optimizer: 'sgd'
     });
 
-    const trainData = data.getTrainData();
-    const testData = data.getTestData();
-    const testXS = testData.xs;
-    const testYS = testData.ys.dataSync();
-    const trainLabels = [];
-    for (let i=0; i<testYS.length; i+=10)  trainLabels[i/10] = maxIndex(testYS, i, i+10) - i;
-
-    const panel = new NetworkPanel(model, testXS, trainLabels);
+    panel.start(model);
 
     let epoch = 0;
     model.fit(trainData.xs, trainData.ys, {epochs: 1000, callbacks: {onEpochEnd: () => {
-        const n = testXS.shape[0];
-        const result = model.predict(testXS).dataSync();
+        if (model.stopTraining)  {
+            model.layers.forEach(l => l.dispose());
+            return;
+        }
+        
+        const n = panel.inputData.shape[0];
+        const result = model.predict(panel.inputData).dataSync();
         const resultLabels = [];
         let success = 0;
         for (let i=0; i<n; i++) {
             const res = maxIndex(result, i*10, (i+1)*10) - i*10;
-            const exp = trainLabels[i];
+            const exp = panel.inputLabels[i];
             if (res === exp)  success++;
             resultLabels[i] = res;
         }
 
         panel.epochEnd(++epoch, success / n, resultLabels);
     }}});
+}
 
-    const colorSwitch = document.getElementById('colorSwitch');
-    panel.setColorMode(colorSwitch.checked);
-    colorSwitch.addEventListener('change', (e) => panel.setColorMode(e.target.checked));
-
-    const sortOutputsSwitch = document.getElementById('sortOutputsSwitch');
-    panel.setSortOutputs(sortOutputsSwitch.checked);
-    sortOutputsSwitch.addEventListener('change', (e) => panel.setSortOutputs(e.target.checked));
+function stopModel(panel) {
+    panel.model.stopTraining = true;
 }
 
 class NetworkPanel
 {
-    constructor(model, inputData, inputLabels) {
-        this.model = model;
+    constructor(inputData, inputLabels) {
         this.inputData = inputData;
         this.inputLabels = inputLabels;
         this.innerLayerColumn1Sep = ": ";
         this.innerLayerColumn2Sep = "  ";
         this.innerLayerWeightPrecision = 5;
 
-        this.calculateModelData();
-        this.initOutputLayer();
-        this.initInputLayer('inputLayer', inputLabels);
-        this.initInnerLayer('innerLayer', model.layers[0].outputShape[1]);
-        this.renderInnerLayer();
+        const that = this;
+        const colorSwitch = document.getElementById('colorSwitch');
+        this.colored = colorSwitch.checked;
+        colorSwitch.onchange = (e) => that.setColorMode(e.target.checked);
+
+        const sortOutputsSwitch = document.getElementById('sortOutputsSwitch');
+        this.sortOutputs = sortOutputsSwitch.checked;
+        sortOutputsSwitch.onchange = (e) => that.setSortOutputs(e.target.checked);
+    }
+
+    start(model) {
+        this.model = model;
+
+        if (this.started)  this.epochEnd(0, 0, null);
+        else  {
+            this.calculateModelData();
+            this.initOutputLayer();
+            this.initInputLayer('inputLayer', this.inputLabels);
+            this.initInnerLayer('innerLayer', model.layers[0].outputShape[1]);
+            this.renderInnerLayer();
+
+            this.started = true;
+        }
     }
 
     epochEnd(epoch, success, predictedLabels)
@@ -353,6 +402,7 @@ class NetworkPanel
     }
 
     renderInnerLayer() {
+        if (!this.model)  return;
         const container = document.getElementById('innerLayer');
         const n = this.innerNodeCount;
         const data = this.modelData;
@@ -382,16 +432,17 @@ class NetworkPanel
     }
 
     renderWeights(canvas, weights, j, n) {
+        const contrast = 10;
         const selectedData = this.selectedData && this.selectedData.dataSync();
         const ctx = canvas.getContext('2d');
         const imgData = ctx.createImageData(IMAGE_W, IMAGE_H);
         const data = imgData.data;
         for (let i=0; i<data.length; i+=4) {
-            const w = weights[j + i/4 * n] * 4;
+            const w = weights[j + i/4 * n] * contrast;
             let r,g,b;
             if (this.colored) {
-                g = Math.round(Math.max(0,  w) * 255);
-                r = Math.round(Math.max(0, -w) * 255);
+                g = Math.round(clamp(w, 0, 1) * 255);
+                r = Math.round(clamp(-w, 0, 1) * 255);
                 b = 0;
             }
             else  r = g = b = Math.round(clamp((w+1)/2, 0, 1) * 255);
@@ -668,14 +719,14 @@ function setupErrorHandler()
 {
     const debug = true;
     window.onerror = function (error) {
-        console.log('error');
-        onerror(error);
+        onerror(error, null, true);
     };
 
     let errorCount = 0;
     let decErrorCountId = null;
-    function onerror(error, clientMessage)
+    function onerror(error, clientMessage, dontLog)
     {
+        if (!dontLog)  console.error(error);
         let maxErrors = debug ? 10 : 3;
         if (errorCount + 1 <= maxErrors)  {
             errorCount++;

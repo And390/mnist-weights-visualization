@@ -74,7 +74,8 @@
         </span>
     </div>
     <div id="loading">Loading...</div>
-    <div id="startButtonRow"><span>start</span></div>
+    <div id="startRow"><span id="startButton" class="button big blue">start</span></div>
+    <div id="restartRow"> <span id="returnButton" class="button big">return</span> <span id="restartButton" class="button big blue">restart</span> </div>
 
     <div class="footer">Source code: <a href="https://github.com/And390/mnist_weights_visualization">https://github.com/And390/mnist_weights_visualization</a></div>
 </div>
@@ -83,6 +84,9 @@
 <div id="mainContainer">
     <div id="headerPanel">
         <div class="controls">
+            <span id="backButton" class="button">
+                back
+            </span>
             <span>
                 <input type="checkbox" id="colorSwitch"/>
                 <label for="colorSwitch">colored</label>
@@ -91,8 +95,6 @@
                 <input type="checkbox" id="sortOutputsSwitch"/>
                 <label for="sortOutputsSwitch">sort outputs</label>
             </span>
-        </div>
-        <div id="outputWeights">
         </div>
         <div id="resultLabel">
             epoch: 0, result: 0%
