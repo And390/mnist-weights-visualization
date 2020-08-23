@@ -5,4 +5,6 @@ It uses the simplest neural network with one inner layer (of configurable size) 
 For each neuron in the inner layer it displays a 28x28 image where black and white (or red and green if you choose) mean negative and positive weights.
 So for each neuron you see what pixel patterns it recognizes.
 
+Uses TensorFlow.js.
+
 [Live demo](http://mnist-patterns.my.to/)

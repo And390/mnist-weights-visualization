@@ -354,10 +354,14 @@ class NetworkPanel
                         canvas.width = IMAGE_W;
                         canvas.height = IMAGE_H;
                         el.appendChild(canvas);
-                        el.biasLabel = document.createElement('div');
-                        el.appendChild(el.biasLabel);
-                        el.outputLabel = document.createElement('div');
-                        el.appendChild(el.outputLabel);
+                        el.biasRow = document.createElement('div');
+                        that.createSpan(el.biasRow, 'bias: &nbsp;&nbsp;');
+                        el.biasLabel = that.createSpan(el.biasRow, '');
+                        el.appendChild(el.biasRow);
+                        el.outputRow = document.createElement('div');
+                        that.createSpan(el.outputRow, 'output:&nbsp;');
+                        el.outputLabel = that.createSpan(el.outputRow, '');
+                        el.appendChild(el.outputRow);
                         el.weightRows = [];
                         for (let j=0; j<10; j++) {
                             const row = document.createElement('div');
@@ -414,8 +418,9 @@ class NetworkPanel
 
         for (let j=0; j<n; j++) {
             const div = container.items[j];
-            div.biasLabel.innerHTML = "bias: &nbsp;&nbsp;" + this.formatWeight(biases[j]);
-            div.outputLabel.innerHTML = "output:&nbsp;" + this.formatWeight(output[j]);
+            div.biasLabel.innerHTML = this.formatWeight(biases[j]);
+            div.outputLabel.innerHTML = this.formatWeight(output[j]);
+            div.outputLabel.style = this.barStyle(output[j] / data.maxInnerResult);
             const k = j * 10;
             let outValues = Array.from(layer2Weights.slice(k, k + 10)).map((v,i) => ({index: i, value: v}));
             if (this.sortOutputs)  outValues = outValues.sort((a,b) => Math.abs(b.value) - Math.abs(a.value));
@@ -609,6 +614,7 @@ class NetworkPanel
         if (selectedData) {
             const innerModel = tf.model({inputs: this.model.layers[0].input, outputs: this.model.layers[0].output});
             const innerResults = data.innerResults = innerModel.predict(selectedData).dataSync();
+            data.maxInnerResult = Math.max(...innerResults.map((it) => Math.abs(it)));
 
             data.results = model.predict(selectedData).dataSync();
             data.resultIndex = maxIndex(data.results, 0, data.results.length);
