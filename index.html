@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Number Recognition</title>
+    <title>Weights visualization</title>
+    <link rel="icon" type="image/png" href="favicon.png"/>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
     <script src="lib/jquery-3.2.1.min.js"></script>
     <script src="lib/toastr.min.js"></script>
@@ -15,7 +16,68 @@
 <body>
 
 
-<div id="loading">Loading...</div>
+<div id="setupContainer">
+    <div>
+        <p>
+        The purpose of this page is to show what patterns neural network learn during a MNIST number recognition task
+        (a well-known set of images of 28x28 pixels size with handwritten digits from 0 to 9).
+        It uses the simplest neural network with one inner layer (of configurable size) and an output layer of 10 neurons (one for each digit).
+        For each neuron in the inner layer it displays a 28x28 image where black and white (or red and green if you choose) mean negative and positive weights.
+        So for each neuron you see what pixel patterns it recognizes.
+        </p>
+        <p>
+        Click an image of the digit (input) to see how it fits the inner layer patterns.
+        Also, it displays the outputs of the inner layer neurons and all the components of the weighted input of the output layer
+        (to see how the result is calculated and what is the contribution of each neuron into the result).
+        </p>
+    </div>
+    <div>
+        <span>
+            <label for="innerNeurons">Inner layer neurons:</label>
+            <input type="number" id="innerNeurons" value="8" min="1" max="30" size="3"/>
+        </span>
+    </div>
+    <div>
+        <span>
+            <label for="innerActivation">Inner layer activation:</label>
+            <select id="innerActivation">
+                <option value="elu">elu</option>
+                <option value="hardSigmoid">hardSigmoid</option>
+                <option value="linear">linear</option>
+                <option value="relu" selected>relu</option>
+                <option value="relu6">relu6</option>
+                <option value="selu">selu</option>
+                <option value="sigmoid">sigmoid</option>
+                <option value="softmax">softmax</option>
+                <option value="softplus">softplus</option>
+                <option value="softsign">softsign</option>
+                <option value="tanh">tanh</option>
+            </select>
+        </span>
+    </div>
+    <div>
+        <span>
+            <label for="outputActivation">Output layer activation:</label>
+            <select id="outputActivation">
+                <option value="elu">elu</option>
+                <option value="hardSigmoid">hardSigmoid</option>
+                <option value="linear">linear</option>
+                <option value="relu" selected>relu</option>
+                <option value="relu6">relu6</option>
+                <option value="selu">selu</option>
+                <option value="sigmoid">sigmoid</option>
+                <option value="softmax">softmax</option>
+                <option value="softplus">softplus</option>
+                <option value="softsign">softsign</option>
+                <option value="tanh">tanh</option>
+            </select>
+        </span>
+    </div>
+    <div id="loading">Loading...</div>
+    <div id="startButtonRow"><span>start</span></div>
+
+    <div class="footer">Source code: <a href="https://github.com/And390/mnist_weights_visualization">https://github.com/And390/mnist_weights_visualization</a></div>
+</div>
 
 
 <div id="mainContainer">

@@ -1,22 +1,43 @@
 
 const errorHandler = setupErrorHandler();
 
-window.addEventListener('load', () => run().catch((error) => errorHandler.onerror(error)));
+window.addEventListener('load', init);
 
-async function run()
+function init()
 {
-    const loadingEl = document.getElementById("loading");
+    const setupContainer = document.getElementById("setupContainer");
     const mainContainer = document.getElementById("mainContainer");
     const data = new MnistData();
-    await data.load();
-    loadingEl.parentElement.removeChild(loadingEl);
-    mainContainer.style.visibility = 'visible';
+    data.load().then(() => {
+        const loadingRow = document.getElementById("loading");
+        const startButtonRow = document.getElementById("startButtonRow");
+        loadingRow.style.display = 'none';
+        startButtonRow.style.display = 'block';
+        let isRun = false;
+        startButtonRow.onclick = () => {
+            if (isRun)  return;
+            const innerNeuronsInput = document.getElementById('innerNeurons');
+            const innerNeurons = parseInt(innerNeuronsInput.value);
+            const innerNeuronsMin = parseInt(innerNeuronsInput.min);
+            const innerNeuronsMax = parseInt(innerNeuronsInput.max);
+            if (isNaN(innerNeurons))  {  toastr.warning("Inner layer neurons value is incorrect: " + innerNeurons);  return;  }
+            if (innerNeurons < innerNeuronsMin || innerNeurons > innerNeuronsMax)  {  toastr.warning("Inner layer neurons count should be in range ["+innerNeuronsMin+" .. "+innerNeuronsMax+"]");  return;  }
+            const innerActivation = document.getElementById('innerActivation').value;
+            const outputActivation = document.getElementById('outputActivation').value;
+            isRun = true;
+            setupContainer.style.visibility = 'hidden';
+            mainContainer.style.visibility = 'visible';
+            setTimeout(() => run(data, innerNeurons, innerActivation, outputActivation), 1);
+        }
+    }).catch((error) => errorHandler.onerror(error));
+}
 
-    const HIDDEN_NODES = 8;
+function run(data, innerNeurons, innerActivation, outputActivation)
+{
     const model = tf.sequential({
         layers: [
-            tf.layers.dense({inputShape: [IMAGE_SIZE], units: HIDDEN_NODES, activation: 'relu', name: 'layer1'}),
-            tf.layers.dense({units: 10, activation: 'softmax', name: 'layer2'}),
+            tf.layers.dense({inputShape: [IMAGE_SIZE], units: innerNeurons, activation: innerActivation, name: 'layer1'}),
+            tf.layers.dense({units: 10, activation: outputActivation, name: 'layer2'}),
         ]
     });
 
